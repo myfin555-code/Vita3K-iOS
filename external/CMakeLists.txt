@@ -238,6 +238,7 @@ if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
 	if(NOT EXISTS "${VITA3K_IOS_MOLTENVK_INCLUDE_DIR}/MoltenVK/mvk_vulkan.h")
 		message(FATAL_ERROR "VITA3K_IOS_MOLTENVK_INCLUDE_DIR must contain MoltenVK/mvk_vulkan.h.")
 	endif()
+	include("${CMAKE_CURRENT_LIST_DIR}/../ios/cmake/ValidateMoltenVK.cmake")
 	add_library(moltenvk-ios STATIC IMPORTED GLOBAL)
 	set_target_properties(moltenvk-ios PROPERTIES
 		IMPORTED_LOCATION "${VITA3K_IOS_MOLTENVK_LIBRARY}"
