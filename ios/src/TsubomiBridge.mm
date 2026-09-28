@@ -200,6 +200,18 @@ NSString *trophy_grade_name(int grade) {
     _resolutionMultiplier = core.resolution_multiplier;
     _vSync = core.v_sync;
     _shaderCache = core.shader_cache;
+    _modulesMode = core.modules_mode;
+    _audioVolume = core.audio_volume;
+    _textureCache = core.texture_cache;
+    _jitCacheMB = core.jit_cache_mb;
+    NSMutableArray<NSString *> *lleModules = [NSMutableArray array];
+    for (const auto &name : core.lle_modules)
+        [lleModules addObject:to_ns(name)];
+    _lleModules = [lleModules copy];
+    NSMutableArray<NSString *> *availableModules = [NSMutableArray array];
+    for (const auto &name : core.available_modules)
+        [availableModules addObject:to_ns(name)];
+    _availableModules = [availableModules copy];
     _cpuOptimizations = core.cpu_opt;
     _ngsAudio = core.ngs_enable;
     _asyncPipelineCompilation = core.async_pipeline_compilation;
@@ -230,6 +242,14 @@ NSString *trophy_grade_name(int grade) {
     core.v_sync = self.vSync;
     core.shader_cache = self.shaderCache;
     core.fps_limit = 60; // iOS always requests 60; the limiter UI was removed.
+    core.modules_mode = static_cast<int>(self.modulesMode);
+    core.audio_volume = static_cast<int>(self.audioVolume);
+    core.texture_cache = self.textureCache;
+    core.jit_cache_mb = static_cast<int>(self.jitCacheMB);
+    for (NSString *name in self.lleModules)
+        core.lle_modules.push_back(to_std(name));
+    for (NSString *name in self.availableModules)
+        core.available_modules.push_back(to_std(name));
     core.cpu_opt = self.cpuOptimizations;
     core.ngs_enable = self.ngsAudio;
     core.async_pipeline_compilation = self.asyncPipelineCompilation;

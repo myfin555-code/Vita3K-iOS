@@ -5,3 +5,8 @@ add_executable(ime_text_tests IMETextTests.cpp)
 target_compile_features(ime_text_tests PRIVATE cxx_std_17)
 target_include_directories(ime_text_tests PRIVATE ../../vita3k/ime/include)
 add_test(NAME ime_text_tests COMMAND ime_text_tests)
+
+add_executable(guest_range_tests GuestRangeTests.cpp)
+target_compile_features(guest_range_tests PRIVATE cxx_std_17)
+target_include_directories(guest_range_tests PRIVATE ../../vita3k/mem/include)
+add_test(NAME guest_range_tests COMMAND guest_range_tests)

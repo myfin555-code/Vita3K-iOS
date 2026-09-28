@@ -13,7 +13,7 @@ final class LibraryState: ObservableObject {
     @Published private(set) var games: [GameEntry] = []
     /// Installed firmware version, shown in the header. Empty when none.
     @Published private(set) var firmwareVersion = ""
-    /// All three official packages are installed. Games cannot boot otherwise
+    /// The main firmware and fonts are installed. Games cannot boot otherwise
     /// and are dimmed in the list.
     @Published private(set) var firmwareReady = false
     /// The core has prepared its executable memory and can start games.

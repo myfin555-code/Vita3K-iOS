@@ -32,6 +32,7 @@
 #include <oaknut/code_block.hpp>
 #endif
 
+#include <algorithm>
 #include <bit>
 #include <memory>
 #include <mutex>
@@ -73,6 +74,18 @@ std::size_t prewarm_ios_jit_code_cache_pool(std::size_t target_count, std::size_
     LOG_INFO("iOS JIT region pool prewarm complete: target={} available={} size={} bytes",
         target_count, available, cache_size);
     return available;
+}
+#endif
+
+#if defined(VITA3K_PLATFORM_IOS)
+namespace {
+std::size_t ios_jit_cache_size = 16 * 1024 * 1024;
+}
+void set_ios_jit_cache_size(std::size_t bytes) {
+    ios_jit_cache_size = std::clamp<std::size_t>(bytes, 16 * 1024 * 1024, 128 * 1024 * 1024);
+}
+std::size_t get_ios_jit_cache_size() {
+    return ios_jit_cache_size;
 }
 #endif
 
@@ -385,8 +398,7 @@ std::unique_ptr<Dynarmic::A32::Jit> DynarmicCPU::make_jit() {
     // default scales poorly during middleware worker-thread bursts. Sixteen
     // MiB remains above Dynarmic's documented approximate 8 MiB minimum; the
     // backend clears the cache when it approaches capacity.
-    constexpr std::size_t IOS_CODE_CACHE_SIZE = 16 * 1024 * 1024;
-    config.code_cache_size = IOS_CODE_CACHE_SIZE;
+    config.code_cache_size = get_ios_jit_cache_size();
 #endif
     config.arch_version = Dynarmic::A32::ArchVersion::v7;
     config.callbacks = cb.get();

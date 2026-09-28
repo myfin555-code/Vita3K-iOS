@@ -198,6 +198,10 @@ static Config::CurrentConfig get_runtime_current_config_after_save(
 
     for (const auto setting : restart_required_settings) {
         switch (setting) {
+        case config::RestartRequiredSetting::Modules:
+            runtime_current.modules_mode = previous_current.modules_mode;
+            runtime_current.lle_modules = previous_current.lle_modules;
+            break;
         case config::RestartRequiredSetting::CpuOpt:
             runtime_current.cpu_opt = previous_current.cpu_opt;
             break;

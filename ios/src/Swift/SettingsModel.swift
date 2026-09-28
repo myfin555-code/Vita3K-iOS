@@ -22,6 +22,12 @@ final class SettingsModel: ObservableObject {
     @Published var resolutionMultiplier: Float
     @Published var vSync: Bool
     @Published var shaderCache: Bool
+    @Published var modulesMode: Int
+    @Published var lleModules: [String]
+    let availableModules: [String]
+    @Published var audioVolume: Double
+    @Published var textureCache: Bool
+    @Published var jitCacheText: String
     @Published var cpuOptimizations: Bool
     @Published var ngsAudio: Bool
     @Published var asyncPipelineCompilation: Bool
@@ -59,6 +65,12 @@ final class SettingsModel: ObservableObject {
         resolutionMultiplier = settings.resolutionMultiplier
         vSync = settings.vSync
         shaderCache = settings.shaderCache
+        modulesMode = min(2, max(0, settings.modulesMode))
+        lleModules = settings.lleModules
+        availableModules = Array(Set(settings.availableModules + settings.lleModules)).sorted()
+        audioVolume = Double(min(100, max(0, settings.audioVolume)))
+        textureCache = settings.textureCache
+        jitCacheText = String(settings.jitCacheMB)
         cpuOptimizations = settings.cpuOptimizations
         ngsAudio = settings.ngsAudio
         asyncPipelineCompilation = settings.asyncPipelineCompilation
@@ -73,6 +85,20 @@ final class SettingsModel: ObservableObject {
         firmwareVersion = settings.firmwareVersion
         firmwareReady = settings.firmwareReady
         missingFirmware = settings.missingFirmware
+    }
+
+    var validJITCacheMB: Int? {
+        let text = jitCacheText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }),
+              let value = Int(text), (16...128).contains(value) else { return nil }
+        return value
+    }
+
+    var canSave: Bool { isPerGame || validJITCacheMB != nil }
+
+    func setModule(_ name: String, enabled: Bool) {
+        lleModules.removeAll { $0 == name }
+        if enabled { lleModules.append(name) }
     }
 
     var isPerGame: Bool {
@@ -93,6 +119,11 @@ final class SettingsModel: ObservableObject {
         settings.resolutionMultiplier = resolutionMultiplier
         settings.vSync = vSync
         settings.shaderCache = shaderCache
+        settings.modulesMode = modulesMode
+        settings.lleModules = lleModules
+        settings.audioVolume = Int(audioVolume)
+        settings.textureCache = textureCache
+        if !isPerGame, let size = validJITCacheMB { settings.jitCacheMB = size }
         settings.cpuOptimizations = cpuOptimizations
         settings.ngsAudio = ngsAudio
         settings.asyncPipelineCompilation = asyncPipelineCompilation

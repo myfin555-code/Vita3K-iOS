@@ -24,6 +24,8 @@
 
 QString restart_required_setting_label(config::RestartRequiredSetting setting) {
     switch (setting) {
+    case config::RestartRequiredSetting::Modules:
+        return QCoreApplication::translate("SettingsDialogTooltips", "Modules");
     case config::RestartRequiredSetting::CpuOpt:
         return QCoreApplication::translate("SettingsDialogTooltips", "Enable CPU Optimizations");
     case config::RestartRequiredSetting::BackendRenderer:

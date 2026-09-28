@@ -48,6 +48,8 @@ struct SettingsView: View {
                 }
                 videoSection
                 graphicsSection
+                cpuSection
+                modulesSection
                 audioSection
                 if !model.isPerGame {
                     controlsSection
@@ -77,6 +79,7 @@ struct SettingsView: View {
                         }
                         onFinish()
                     }
+                    .disabled(!model.canSave)
                 }
             }
             .alert("Developer mode enabled", isPresented: $showingRuntimeNotice) {
@@ -158,6 +161,7 @@ struct SettingsView: View {
         Section("Video") {
             Toggle("V-Sync", isOn: $model.vSync)
                 .accessibilityHint("Synchronizes presentation to the display.")
+            Toggle("Texture cache", isOn: $model.textureCache)
             Toggle("Shader cache", isOn: $model.shaderCache)
                 .accessibilityHint("Reuses compiled shaders between sessions. Turn off to force regeneration when diagnosing a graphics fault.")
         }
@@ -205,13 +209,71 @@ struct SettingsView: View {
         }
     }
 
+    private var cpuSection: some View {
+        Section {
+            Picker("CPU core", selection: $model.cpuOptimizations) {
+                Text("Dynarmic — optimized").tag(true)
+                Text("Dynarmic — optimizations off").tag(false)
+            }
+            if !model.isPerGame {
+                HStack {
+                    Text("JIT cache (MB)")
+                    TextField("16", text: $model.jitCacheText)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .accessibilityLabel("JIT cache in MB per guest thread")
+                }
+                if model.validJITCacheMB == nil {
+                    Text("Enter a whole number from 16 to 128.").foregroundStyle(.red)
+                }
+            }
+        } header: {
+            Text("CPU")
+        } footer: {
+            Text("Dynarmic is the CPU engine included in this build. CPU mode changes apply on the next game launch. JIT cache is MB per guest thread (1 MB = 1,048,576 bytes), defaults to 16, and requires restarting the app. Larger values such as 128 can consume several GB across threads and cause iOS to close the app.")
+        }
+    }
+
+    private var modulesSection: some View {
+        Section {
+            Picker("Modules mode", selection: $model.modulesMode) {
+                Text("Automatic").tag(0)
+                Text("Automatic + manual").tag(1)
+                Text("Manual").tag(2)
+            }
+            if model.modulesMode != 0 {
+                NavigationLink("Select firmware modules (\(model.lleModules.count))") {
+                    Form {
+                        if model.availableModules.isEmpty {
+                            Text("Install PSVUPDAT.PUP to populate the firmware module list.")
+                        }
+                        ForEach(model.availableModules, id: \.self) { name in
+                            Toggle(name, isOn: Binding(
+                                get: { model.lleModules.contains(name) },
+                                set: { model.setModule(name, enabled: $0) }
+                            ))
+                        }
+                    }
+                    .navigationTitle("Firmware modules")
+                }
+            }
+        } header: {
+            Text("Modules")
+        } footer: {
+            Text("Automatic chooses firmware modules for you. Automatic + manual adds your selections. Manual uses your selected firmware modules. Changes apply on the next game launch.")
+        }
+    }
+
     private var audioSection: some View {
         Section {
             Toggle("NGS audio", isOn: $model.ngsAudio)
             LabeledContent("Audio backend", value: "SDL")
-            Toggle("CPU optimizations", isOn: $model.cpuOptimizations)
+            LabeledContent("Volume", value: "\(Int(model.audioVolume))%")
+            Slider(value: $model.audioVolume, in: 0...100, step: 1) {
+                Text("Audio volume")
+            }
         } header: {
-            Text("Audio & CPU")
+            Text("Audio")
         } footer: {
             Text("NGS is full Vita audio emulation; disable it only while diagnosing a problem.")
         }

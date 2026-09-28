@@ -23,6 +23,8 @@
 
 #include <gxm/functions.h>
 #include <gxm/types.h>
+#include <mem/guest_range.h>
+#include <mem/state.h>
 #include <renderer/functions.h>
 #include <util/align.h>
 #include <vkutil/vkutil.h>
@@ -127,7 +129,25 @@ void sync_texture(VKContext &context, MemState &mem, std::size_t index, SceGxmTe
         // get the sampler now
         context.state.texture_cache.cache_and_bind_sampler(texture, is_depth_surface);
     } else {
-        context.state.texture_cache.cache_and_bind_texture(texture, mem);
+#ifdef VITA3K_PLATFORM_IOS
+        // Movie teardown can free a buffer while its last draw is still queued.
+        // Serialize allocation lifetime through hashing AND the staging copy;
+        // a check without this lock still races free()/mprotect(PROT_NONE).
+        const std::lock_guard allocation_lock(mem.generation_mutex);
+        const auto allocated = [&](uint32_t page) { return is_valid_addr(mem, page); };
+        const auto valid = [&](uint64_t address, uint64_t size) {
+            return mem::valid_guest_range(address, size, allocated);
+        };
+        const uint64_t address = static_cast<uint64_t>(texture.data_addr) << 2;
+        const uint64_t palette = static_cast<uint64_t>(texture.palette_addr) << 6;
+        if (!valid(address, gxm::texture_size_first_mip(texture))
+            || (base_format == SCE_GXM_TEXTURE_BASE_FORMAT_P4 && !valid(palette, 16 * sizeof(uint32_t)))
+            || (base_format == SCE_GXM_TEXTURE_BASE_FORMAT_P8 && !valid(palette, 256 * sizeof(uint32_t)))) {
+            LOG_WARN_ONCE("Skipping queued texture whose guest memory was freed or is invalid: 0x{:X}", address);
+            return;
+        }
+#endif
+        context.state.texture_cache.cache_and_bind_texture(texture, mem, !config.current_config.texture_cache);
         auto &image = context.state.texture_cache.current_texture->texture;
         lookup_result = TextureLookupResult{
             image.view,

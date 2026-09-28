@@ -133,6 +133,8 @@ std::vector<RestartRequiredSetting> get_restart_required_settings(
     };
 
     append_if_changed(before.cpu_opt != after.cpu_opt, RestartRequiredSetting::CpuOpt);
+    append_if_changed(before.modules_mode != after.modules_mode || before.lle_modules != after.lle_modules,
+        RestartRequiredSetting::Modules);
     append_if_changed(before.backend_renderer != after.backend_renderer, RestartRequiredSetting::BackendRenderer);
     append_if_changed(before.gpu_idx != after.gpu_idx, RestartRequiredSetting::GraphicsDevice);
 #ifdef __ANDROID__

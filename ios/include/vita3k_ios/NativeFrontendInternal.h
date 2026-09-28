@@ -83,7 +83,7 @@ void present_all_save_import_picker();
 void present_library_archive_import_picker();
 
 // The library's firmware gate: presents an explanatory alert and returns false
-// when the three official packages are not all installed.
+// when the main firmware or font package is missing.
 bool firmware_ready_or_alert();
 
 // The graphics-help explainer from the library header.

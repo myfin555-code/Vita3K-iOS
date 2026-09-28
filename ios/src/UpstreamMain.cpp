@@ -29,19 +29,15 @@
 #include <app/session_controller.h>
 #include <app/state.h>
 #include <audio/state.h>
-#include <packages/archive.h>
-#include <packages/functions.h>
-#include <packages/license.h>
-#include <packages/pkg.h>
-#include <packages/sfo.h>
 #include <compat/functions.h>
 #include <compat/state.h>
 #include <config/functions.h>
+#include <config/settings.h>
 #include <config/state.h>
 #include <config/version.h>
+#include <cpu/functions.h>
 #include <ctrl/functions.h>
 #include <ctrl/state.h>
-#include <cpu/functions.h>
 #include <display/state.h>
 #include <emuenv/state.h>
 #include <io/state.h>
@@ -49,6 +45,11 @@
 #include <modules/module_parent.h>
 #include <np/trophy/collection.h>
 #include <np/trophy/trp_parser.h>
+#include <packages/archive.h>
+#include <packages/functions.h>
+#include <packages/license.h>
+#include <packages/pkg.h>
+#include <packages/sfo.h>
 #include <renderer/frame_host.h>
 #include <renderer/functions.h>
 #include <renderer/state.h>
@@ -538,6 +539,9 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
             return false;
         }
 
+        cfg.ios_jit_cache_mb = std::clamp(cfg.ios_jit_cache_mb, 16, 128);
+        set_ios_jit_cache_size(static_cast<std::size_t>(cfg.ios_jit_cache_mb) * 1024 * 1024);
+
         // MoltenVK-backed Vulkan is the only renderer on iOS.
         cfg.backend_renderer = "Vulkan";
 
@@ -681,7 +685,7 @@ std::string firmware_version_display(EmuEnvState &emuenv) {
 
 bool firmware_setup_complete(const EmuEnvState &emuenv) {
     const auto state = app::get_firmware_state(emuenv);
-    return state.font_package && state.preinstalled_package && state.main_firmware;
+    return state.font_package && state.main_firmware;
 }
 
 Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
@@ -689,9 +693,7 @@ Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
     const auto firmware = app::get_firmware_state(emuenv);
     std::vector<std::string> missing;
     if (!firmware.font_package)
-        missing.emplace_back("FONTPKG.PUP");
-    if (!firmware.preinstalled_package)
-        missing.emplace_back("PREINSTALL.PUP");
+        missing.emplace_back("PSP2UPDAT.PUP (fonts)");
     if (!firmware.main_firmware)
         missing.emplace_back("PSVUPDAT.PUP");
     std::string missing_text;
@@ -700,6 +702,9 @@ Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
             missing_text += ", ";
         missing_text += name;
     }
+    std::vector<std::string> available_modules;
+    for (const auto &[name, selected] : config::get_modules_list(emuenv.vita_fs_path, current.lle_modules))
+        available_modules.push_back(name);
     const auto &binds = emuenv.cfg.controller_binds;
     const bool binds_sized = binds.size() > SDL_GAMEPAD_BUTTON_NORTH;
     return {
@@ -707,6 +712,12 @@ Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
         .v_sync = current.v_sync,
         .shader_cache = current.shader_cache,
         .fps_limit = 60,
+        .modules_mode = current.modules_mode,
+        .audio_volume = current.audio_volume,
+        .texture_cache = current.texture_cache,
+        .jit_cache_mb = emuenv.cfg.ios_jit_cache_mb,
+        .lle_modules = current.lle_modules,
+        .available_modules = std::move(available_modules),
         .cpu_opt = current.cpu_opt,
         .ngs_enable = current.ngs_enable,
         .async_pipeline_compilation = current.async_pipeline_compilation,
@@ -2037,7 +2048,7 @@ void start_library_archive_import(EmuEnvState &emuenv,
 void start_import(EmuEnvState &emuenv, const std::string &path, const bool firmware) {
     if (!firmware && !firmware_setup_complete(emuenv)) {
         vita3k_ios_report_import_result(
-            "Install FONTPKG.PUP, PREINSTALL.PUP, and PSVUPDAT.PUP before importing games", false);
+            "Install PSVUPDAT.PUP and PSP2UPDAT.PUP (fonts) before importing games", false);
         return;
     }
     if (g_import_job && !g_import_job->done.load()) {
@@ -2211,6 +2222,8 @@ std::vector<Vita3KIOSGameEntry> native_games(EmuEnvState &emuenv) {
 
 std::string restart_setting_name(config::RestartRequiredSetting setting) {
     switch (setting) {
+    case config::RestartRequiredSetting::Modules:
+        return "modules";
     case config::RestartRequiredSetting::CpuOpt:
         return "CPU optimisation";
     case config::RestartRequiredSetting::ResolutionMultiplier:
@@ -2244,6 +2257,10 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
         // changes guest timing. Clear any value persisted by an older build.
         current.fps_hack = false;
         current.cpu_opt = settings.cpu_opt;
+        current.modules_mode = std::clamp(settings.modules_mode, 0, 2);
+        current.lle_modules = settings.lle_modules;
+        current.audio_volume = std::clamp(settings.audio_volume, 0, 100);
+        current.texture_cache = settings.texture_cache;
         current.ngs_enable = settings.ngs_enable;
         current.async_pipeline_compilation = settings.async_pipeline_compilation;
         current.anisotropic_filtering = settings.anisotropic_filtering;
@@ -2257,6 +2274,11 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     desired.v_sync = settings.v_sync;
     desired.fps_hack = false;
     desired.cpu_opt = settings.cpu_opt;
+    desired.modules_mode = std::clamp(settings.modules_mode, 0, 2);
+    desired.lle_modules = settings.lle_modules;
+    desired.audio_volume = std::clamp(settings.audio_volume, 0, 100);
+    desired.texture_cache = settings.texture_cache;
+    desired.ios_jit_cache_mb = std::clamp(settings.jit_cache_mb, 16, 128);
     desired.ngs_enable = settings.ngs_enable;
     desired.async_pipeline_compilation = settings.async_pipeline_compilation;
     desired.anisotropic_filtering = settings.anisotropic_filtering;
@@ -2273,6 +2295,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
         desired.controller_binds[SDL_GAMEPAD_BUTTON_NORTH] = face_button_physical_for_slot(settings.bind_triangle);
     }
 
+    const bool jit_cache_changed = desired.ios_jit_cache_mb != emuenv.cfg.ios_jit_cache_mb;
     const auto result = app::commit_settings(emuenv, desired);
     emuenv.display.fps_hack = false;
     emuenv.display.fps_limit.store(60, std::memory_order_relaxed);
@@ -2280,6 +2303,8 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     restart_required.reserve(result.restart_required_settings.size());
     for (const auto setting : result.restart_required_settings)
         restart_required.push_back(restart_setting_name(setting));
+    if (jit_cache_changed)
+        restart_required.push_back("JIT cache (restart the app)");
     vita3k_ios_report_settings_result(restart_required);
     LOG_INFO("iOS settings saved: runtime_applied={} restart_required={}",
         result.runtime_settings_applied, restart_required.size());
@@ -2293,6 +2318,11 @@ void apply_game_session_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &s
     current.v_sync = settings.v_sync;
     current.fps_hack = false;
     current.cpu_opt = settings.cpu_opt;
+    current.modules_mode = std::clamp(settings.modules_mode, 0, 2);
+    current.lle_modules = settings.lle_modules;
+    current.audio_volume = std::clamp(settings.audio_volume, 0, 100);
+    emuenv.audio.set_global_volume(current.audio_volume / 100.f);
+    current.texture_cache = settings.texture_cache;
     current.ngs_enable = settings.ngs_enable;
     current.async_pipeline_compilation = settings.async_pipeline_compilation;
     current.anisotropic_filtering = settings.anisotropic_filtering;
@@ -2359,7 +2389,7 @@ std::optional<AppLaunchRequest> choose_boot_title(EmuEnvState &emuenv) {
             case Vita3KIOSFrontendActionKind::Launch:
                 if (!firmware_setup_complete(emuenv)) {
                     vita3k_ios_show_boot_error(
-                        "Install FONTPKG.PUP, PREINSTALL.PUP, and PSVUPDAT.PUP before playing games.");
+                        "Install PSVUPDAT.PUP and PSP2UPDAT.PUP (fonts) before playing games.");
                     break;
                 }
                 // Defense in depth: the library already refuses launches without
@@ -2639,7 +2669,6 @@ bool has_physical_controller(CtrlState &state) {
     });
 }
 
-constexpr std::size_t IOS_JIT_CACHE_SIZE = 16 * 1024 * 1024;
 // Gravity Rush runs ~24 concurrently-live guest threads; exited-but-undeleted
 // threads now release their region when they park dormant, but keep headroom
 // for thread churn (audio/savedata workers) on top of the live set.
@@ -2666,8 +2695,7 @@ bool prepare_ios_jit_pool() {
 
     g_unhandled_universal_jit_breakpoint.store(false, std::memory_order_relaxed);
     try {
-        const std::size_t warmed_jit_regions =
-            prewarm_ios_jit_code_cache_pool(IOS_JIT_POOL_TARGET, IOS_JIT_CACHE_SIZE);
+        const std::size_t warmed_jit_regions = prewarm_ios_jit_code_cache_pool(IOS_JIT_POOL_TARGET, get_ios_jit_cache_size());
         if (warmed_jit_regions < IOS_JIT_POOL_TARGET) {
             LOG_CRITICAL("iOS JIT region pool is under target: target={} available={}",
                 IOS_JIT_POOL_TARGET, warmed_jit_regions);

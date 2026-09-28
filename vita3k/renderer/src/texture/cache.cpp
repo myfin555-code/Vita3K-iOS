@@ -21,7 +21,9 @@
 #include <renderer/texture_cache.h>
 
 #include <gxm/functions.h>
+#include <mem/guest_range.h>
 #include <mem/ptr.h>
+#include <mem/state.h>
 #include <util/align.h>
 #include <util/log.h>
 
@@ -436,6 +438,20 @@ void TextureCache::upload_texture(const SceGxmTexture &gxm_texture, MemState &me
         pixels_per_stride = align(pixels_per_stride, align_width);
         memory_height = align(memory_height, align_height);
 
+#ifdef VITA3K_PLATFORM_IOS
+        // sync_texture holds generation_mutex through this upload. Check later
+        // mips/faces too, since first-mip validation cannot cover their storage.
+        const uint64_t source_address = static_cast<uint64_t>(data.address()) + total_source_so_far;
+        const uint64_t source_size = (base_format == SCE_GXM_TEXTURE_BASE_FORMAT_YUV420P2
+                                         || base_format == SCE_GXM_TEXTURE_BASE_FORMAT_YUV420P3)
+            ? gxm::texture_size_first_mip(gxm_texture)
+            : (static_cast<uint64_t>(pixels_per_stride) * memory_height * gxm::bits_per_pixel(base_format) + 7) / 8;
+        if (!mem::valid_guest_range(source_address, source_size,
+                [&](uint32_t page) { return is_valid_addr(mem, page); })) {
+            LOG_WARN_ONCE("Skipping texture upload from invalid guest mip/face memory: 0x{:X}", source_address);
+            return;
+        }
+#endif
         // perform all needed conversions (formats not supported by modern GPUs)
         switch (base_format) {
         case SCE_GXM_TEXTURE_BASE_FORMAT_P4:
@@ -626,7 +642,7 @@ static constexpr TextureGxmDataRepr strided_texture_mask = {
     0xF3FFFFFF
 };
 
-void TextureCache::cache_and_bind_texture(const SceGxmTexture &gxm_texture, MemState &mem) {
+void TextureCache::cache_and_bind_texture(const SceGxmTexture &gxm_texture, MemState &mem, bool force_upload) {
     R_PROFILE(__func__);
 
     size_t index = 0;
@@ -728,6 +744,7 @@ void TextureCache::cache_and_bind_texture(const SceGxmTexture &gxm_texture, MemS
         }
     }
     current_info = info;
+    upload = upload || force_upload;
 
     if (gxm_texture.data_addr == 0) {
         upload = false;

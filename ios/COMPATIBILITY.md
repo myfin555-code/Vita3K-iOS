@@ -63,7 +63,7 @@ LiveContainer users must enable **Use LiveContainer's Bundle ID** in its setting
 For conventional JIT, readiness requires a successful RWX allocation and
 RX → RW → RX transitions. The app permits debugger detachment after permission
 is granted. The iOS 26 universal path requires a traced process while all
-32 × 16 MiB regions are prepared, then sends the universal detach request.
+32 regions of the configured cache size are prepared, then sends the universal detach request.
 The pool is reused across games; exhaustion without an attached script fails
 allocation rather than issuing an unhandled breakpoint. Restarting the app
 requires acquiring JIT again. The banner only clears after preparation succeeds.
@@ -134,3 +134,53 @@ Linux cannot compile UIKit/SwiftUI or validate device JIT. Before release, run:
 
 Physical-device and Xcode results are pending; portable tests alone do not
 establish that all JIT tools or games work on all four OS families.
+
+## Firmware and advanced settings
+
+Setup, game import and launch require **PSVUPDAT.PUP** (main firmware under
+`vs0`) and **PSP2UPDAT.PUP** (fonts under `sa0`). Preinstall content under `pd0`
+is optional and has no onboarding page or launch gate.
+
+Settings now expose these core options globally and per game:
+
+- Modules: Automatic, Automatic + manual, Manual, matching Vita3K-Plus's
+  `ModulesMode` values. Selections come from installed `vs0/sys/external/*.suprx`.
+  Changes take effect on the next launch, with the running game's module policy
+  preserved until restart.
+- CPU core: Dynarmic with safe optimizations enabled or disabled. This build
+  contains only Dynarmic; this selector does not change the number of physical
+  CPU cores or expose an unimplemented interpreter. `cpu-pool-size` in upstream
+  config is unused by the current kernel and is not exposed as a working option.
+- Audio volume (0–100%) and texture upload reuse. Disabling Texture cache
+  forces Vulkan texture uploads even when the texture hash is unchanged.
+
+The global **JIT cache (MB)** field accepts whole numbers from 16 to 128.
+It is persisted as `ios-jit-cache-mb`, applied only at process startup, and
+used by both Dynarmic and the iOS 26 universal prewarm pool. A full app restart
+is required. MB here means 1,048,576 bytes **per guest thread**, not a total
+memory budget. The default remains 16; 128 can require several GB with many
+threads and is unsuitable for memory-constrained devices.
+
+## Movie skip crash investigation
+
+The supplied Attack on Titan (PCSE00812) log was matched to build `497f193` and
+symbolicated using its CI IPA. The faulting stack reads:
+`hash_texture_data` → `TextureCache::cache_and_bind_texture` →
+`vulkan::sync_texture` → renderer command processing, immediately after movie
+worker exit/decoder flush. This identifies the faulting code; an on-device
+reproduction is still required to confirm the fix.
+
+On iOS, texture hashing and staging upload now share the guest allocation lock
+with `free()`, check every source page, and skip invalid/freed texture sources.
+Palette and later mip/face reads are checked too. This closes the window where
+a queued video texture can be decommitted while the renderer reads it. The
+Vulkan surface-size comparison also uses the same capability-derived extent
+as swapchain creation, avoiding repeated rebuilds when SDL and Metal report
+different pixel sizes. No input throttling or global GPU idle was added.
+
+Device verification: repeatedly skip the intro, switch scenes and games,
+background/foreground and rotate; confirm no texture-read fault and no repeated
+swapchain rebuild at a stable size. Also verify module override/reset, volume,
+texture-cache toggle, cache persistence after restart, and setup without `pd0`.
+Portable tests cover invalid/freed page ranges and overflow, but cannot certify
+UIKit, Vulkan, or game behavior on device.

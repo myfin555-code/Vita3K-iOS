@@ -24,6 +24,12 @@ NS_SWIFT_NAME(EmulatorSettings)
 @property(nonatomic) float resolutionMultiplier;
 @property(nonatomic) BOOL vSync;
 @property(nonatomic) BOOL shaderCache;
+@property(nonatomic) NSInteger modulesMode;
+@property(nonatomic) NSInteger audioVolume;
+@property(nonatomic) BOOL textureCache;
+@property(nonatomic) NSInteger jitCacheMB;
+@property(nonatomic, copy) NSArray<NSString *> *lleModules;
+@property(nonatomic, copy) NSArray<NSString *> *availableModules;
 @property(nonatomic) BOOL cpuOptimizations;
 @property(nonatomic) BOOL ngsAudio;
 @property(nonatomic) BOOL asyncPipelineCompilation;

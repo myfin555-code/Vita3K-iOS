@@ -757,8 +757,17 @@ bool ScreenRenderer::surface_matches_window_size() {
     if (frame_host->drawable_width() == 0 || frame_host->drawable_height() == 0)
         return true;
 
+#ifdef VITA3K_PLATFORM_IOS
+    const auto capabilities = state.physical_device.getSurfaceCapabilitiesKHR(surface);
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
+        return extent == capabilities.currentExtent;
+    const auto width = std::clamp<uint32_t>(frame_host->drawable_width(), capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+    const auto height = std::clamp<uint32_t>(frame_host->drawable_height(), capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+    return extent.width == width && extent.height == height;
+#else
     return extent.width == static_cast<uint32_t>(frame_host->drawable_width())
         && extent.height == static_cast<uint32_t>(frame_host->drawable_height());
+#endif
 }
 
 } // namespace renderer::vulkan

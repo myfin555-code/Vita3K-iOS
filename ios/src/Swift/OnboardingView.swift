@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// First-run flow with optional pre-install firmware and required font/main packages.
+/// First-run flow requiring the main firmware and font packages.
 ///
 /// The UIKit version carried ~250 lines of constraint work to keep the card
 /// legible across rotation — an explicit safe-area-derived width, separate
@@ -14,11 +14,10 @@ import SwiftUI
 /// that body calls agree with it.
 @MainActor
 struct OnboardingView: View {
-    /// Called once the user finishes setup, allowing pre-install firmware to be deferred.
+    /// Called once the user finishes firmware and font setup.
     let onFinish: () -> Void
 
     @State private var pageIndex = 0
-    @AppStorage("tsubomi.skipPreinstall") private var skipsPreinstall = false
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -55,15 +54,9 @@ struct OnboardingView: View {
         // Titles name what the user is installing rather than the filename;
         // the hint still says which file to pick.
         Page(
-            symbol: "shippingbox",
-            title: "Install Pre-Install Firmware",
-            body: "Choose the official pre-install firmware PUP.",
-            requirement: .preinstalled
-        ),
-        Page(
             symbol: "textformat",
             title: "Install Font Firmware",
-            body: "Choose the official font package PUP.",
+            body: "Choose PSP2UPDAT.PUP to install the Vita fonts.",
             requirement: .fontPackage
         ),
         Page(
@@ -88,10 +81,9 @@ struct OnboardingView: View {
 
     private var canFinishSetup: Bool {
         firmware.fontPackageReady && firmware.mainFirmwareReady
-            && (firmware.preinstalledReady || skipsPreinstall)
     }
 
-    /// Next requires installation; pre-install firmware also offers Skip.
+    /// Next requires installation of the package on this page.
     private var requirementSatisfied: Bool {
         guard let requirement = page.requirement else { return true }
         return requirement.isSatisfied(by: firmware)
@@ -223,16 +215,6 @@ struct OnboardingView: View {
                     .disabled(true)
             }
 
-            if page.requirement == .preinstalled && !requirementSatisfied {
-                Button("Skip") {
-                    skipsPreinstall = true
-                    pageIndex += 1
-                }
-                .compatibleGlassButton()
-                .disabled(installProgress != nil)
-                .accessibilityHint("Install pre-install firmware later and continue to font firmware")
-            }
-
             progressDots
         }
         .controlSize(.large)
@@ -269,7 +251,6 @@ struct OnboardingView: View {
     }
 
     private enum FirmwareRequirement {
-        case preinstalled
         case fontPackage
         case mainFirmware
 
@@ -278,7 +259,6 @@ struct OnboardingView: View {
         @MainActor
         func isSatisfied(by state: FirmwareState) -> Bool {
             switch self {
-            case .preinstalled: return state.preinstalledReady
             case .fontPackage: return state.fontPackageReady
             case .mainFirmware: return state.mainFirmwareReady
             }

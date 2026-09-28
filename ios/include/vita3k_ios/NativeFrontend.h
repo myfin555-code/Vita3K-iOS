@@ -56,6 +56,12 @@ struct Vita3KIOSSettings {
     bool v_sync = true;
     bool shader_cache = true;
     int fps_limit = 60;
+    int modules_mode = 0;
+    int audio_volume = 100;
+    bool texture_cache = true;
+    int jit_cache_mb = 16;
+    std::vector<std::string> lle_modules;
+    std::vector<std::string> available_modules;
     bool cpu_opt = true;
     bool ngs_enable = true;
     bool async_pipeline_compilation = true;
@@ -89,8 +95,7 @@ struct Vita3KIOSSettings {
     int bind_triangle = 3;
     // Display-only: installed firmware version shown on the library header.
     std::string firmware_version;
-    // Games stay unavailable until all three official firmware packages have
-    // populated their canonical partitions (pd0, vs0, and sa0).
+    // Games require the main firmware (vs0) and font package (sa0).
     bool firmware_ready = false;
     bool font_package_ready = false;
     bool preinstalled_package_ready = false;

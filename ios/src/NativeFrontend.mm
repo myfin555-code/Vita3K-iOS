@@ -618,6 +618,18 @@ Vita3KIOSSettings game_settings_or(NSString *titleId, const Vita3KIOSSettings &f
     if (stored[@"shader_cache"])
         settings.shader_cache = [stored[@"shader_cache"] boolValue];
     settings.fps_limit = 60;
+    if (stored[@"modulesMode"])
+        settings.modules_mode = [stored[@"modulesMode"] intValue];
+    if (stored[@"audioVolume"])
+        settings.audio_volume = [stored[@"audioVolume"] intValue];
+    if (stored[@"textureCache"])
+        settings.texture_cache = [stored[@"textureCache"] boolValue];
+    if ([stored[@"lleModules"] isKindOfClass:NSArray.class]) {
+        settings.lle_modules.clear();
+        for (id name in stored[@"lleModules"])
+            if ([name isKindOfClass:NSString.class])
+                settings.lle_modules.emplace_back([(NSString *)name UTF8String]);
+    }
     if (stored[@"cpuOpt"])
         settings.cpu_opt = [stored[@"cpuOpt"] boolValue];
     if (stored[@"ngs"])
@@ -638,10 +650,17 @@ Vita3KIOSSettings game_settings_or(NSString *titleId, const Vita3KIOSSettings &f
 }
 
 void store_game_settings(NSString *titleId, const Vita3KIOSSettings &settings) {
+    NSMutableArray<NSString *> *modules = [NSMutableArray array];
+    for (const auto &name : settings.lle_modules)
+        [modules addObject:[NSString stringWithUTF8String:name.c_str()]];
     [NSUserDefaults.standardUserDefaults setObject:@{
         @"resolution": @(settings.resolution_multiplier),
         @"vsync": @(settings.v_sync),
         @"shader_cache": @(settings.shader_cache),
+        @"modulesMode": @(settings.modules_mode),
+        @"audioVolume": @(settings.audio_volume),
+        @"textureCache": @(settings.texture_cache),
+        @"lleModules": modules,
         @"cpuOpt": @(settings.cpu_opt),
         @"ngs": @(settings.ngs_enable),
         @"asyncPipelines": @(settings.async_pipeline_compilation),
@@ -823,7 +842,7 @@ bool firmware_ready_or_alert() {
         ?: @"required firmware";
     present_alert(@"Complete firmware setup",
         [NSString stringWithFormat:
-            @"Install all three firmware packages before importing or playing games.\n\nMissing: %@\n\nUse + > Import firmware (.PUP).",
+            @"Install PSVUPDAT.PUP and PSP2UPDAT.PUP (fonts) before importing or playing games.\n\nMissing: %@\n\nUse + > Import firmware (.PUP).",
             missing]);
     return false;
 }
@@ -1385,14 +1404,13 @@ void vita3k_ios_show_library(const std::vector<Vita3KIOSGameEntry> &games,
         [TsubomiLibraryStateBridge setJITAvailable:g_jit_available];
         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
         if (settingsCopy.firmware_ready) {
-            // Existing installs that already contain all three packages never
+            // Existing installs that contain the main firmware and fonts never
             // see onboarding, even when upgrading from a build predating it.
             [defaults setBool:YES forKey:@"tsubomi.onboarded"];
             [g_onboarding_controller.view removeFromSuperview];
             g_onboarding_controller = nil;
         } else if (![defaults boolForKey:@"tsubomi.onboarded"]
-            || !settingsCopy.font_package_ready || !settingsCopy.main_firmware_ready
-            || (!settingsCopy.preinstalled_package_ready && ![defaults boolForKey:@"tsubomi.skipPreinstall"])) {
+            || !settingsCopy.font_package_ready || !settingsCopy.main_firmware_ready) {
             if (!g_onboarding_controller) {
                 // Firmware progress reaches the flow through FirmwareState,
                 // pushed from the same snapshot above, so there is no
