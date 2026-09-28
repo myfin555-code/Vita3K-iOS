@@ -22,7 +22,8 @@ that you are complying with the laws in your jurisdiction.
 
 ## Requirements
 
-- An iPhone/iPad on a recent iOS version, with a way to sideload an unsigned `.ipa`.
+- An iPhone/iPad on iOS 16.0 or later (including 17, 18 and 26), with a way to sideload an unsigned `.ipa`.
+  See [iOS compatibility, JIT setup and native keyboard validation](ios/COMPATIBILITY.md) for prerequisites and pending device checks.
 - **JIT** must be enabled for games to run (Tsubomi shows a banner and refuses to boot
   games when JIT is unavailable). [StikDebug](https://github.com/StephenDev0/StikDebug)
   or a comparable JIT enabler works.

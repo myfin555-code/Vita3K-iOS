@@ -29,7 +29,7 @@ index bfa87d96..0314a4fb 100644
  #    include <unistd.h>
  #else
  #    include <sys/mman.h>
-@@ -23,6 +31,186 @@
+@@ -23,6 +31,201 @@
  
  namespace oaknut {
  
@@ -87,6 +87,19 @@ index bfa87d96..0314a4fb 100644
 +
 +inline bool requires_universal_jit()
 +{
++    // Prefer the conventional mapping whenever the process permits it,
++    // including older hardware and entitlement-enabled installations.
++    const std::size_t page_size = static_cast<std::size_t>(getpagesize());
++    void* probe = mmap(nullptr, page_size, PROT_READ | PROT_WRITE | PROT_EXEC,
++        MAP_ANON | MAP_PRIVATE, -1, 0);
++    if (probe != MAP_FAILED) {
++        const bool usable = mprotect(probe, page_size, PROT_READ | PROT_EXEC) == 0
++            && mprotect(probe, page_size, PROT_READ | PROT_WRITE) == 0
++            && mprotect(probe, page_size, PROT_READ | PROT_EXEC) == 0;
++        munmap(probe, page_size);
++        if (usable)
++            return false;
++    }
 +    char version[32]{};
 +    std::size_t version_size = sizeof(version);
 +    if (sysctlbyname("kern.osproductversion", version, &version_size, nullptr, 0) != 0)
@@ -193,6 +206,8 @@ index bfa87d96..0314a4fb 100644
 +
 +inline std::size_t prewarm_jit_region_pool(std::size_t size, std::size_t target_count)
 +{
++    if (!detail::requires_universal_jit())
++        return target_count;
 +    std::size_t available = detail::matching_region_count(size);
 +    while (available < target_count) {
 +        if (!detail::is_process_traced()) {
@@ -216,7 +231,7 @@ index bfa87d96..0314a4fb 100644
  class CodeBlock {
  public:
      explicit CodeBlock(std::size_t size)
-@@ -32,7 +220,31 @@ public:
+@@ -32,7 +235,31 @@ public:
          m_memory = (std::uint32_t*)VirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
  #elif defined(__APPLE__)
  #    if TARGET_OS_IPHONE
@@ -249,7 +264,7 @@ index bfa87d96..0314a4fb 100644
  #    else
          m_memory = (std::uint32_t*)mmap(nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE | MAP_JIT, -1, 0);
  #    endif
-@@ -56,6 +266,16 @@ public:
+@@ -56,6 +283,16 @@ public:
  #if defined(_WIN32)
          VirtualFree((void*)m_memory, 0, MEM_RELEASE);
  #else
@@ -266,7 +281,7 @@ index bfa87d96..0314a4fb 100644
          munmap(m_memory, m_size);
  #endif
      }
-@@ -70,10 +290,27 @@ public:
+@@ -70,10 +307,27 @@ public:
          return m_memory;
      }
  
@@ -294,7 +309,7 @@ index bfa87d96..0314a4fb 100644
  #elif defined(__APPLE__) || defined(__NetBSD__) || defined(__OpenBSD__)
          mprotect(m_memory, m_size, PROT_READ | PROT_EXEC);
  #endif
-@@ -83,6 +320,9 @@ public:
+@@ -83,6 +337,9 @@ public:
      {
  #if defined(__APPLE__) && !TARGET_OS_IPHONE
          pthread_jit_write_protect_np(0);
@@ -304,7 +319,7 @@ index bfa87d96..0314a4fb 100644
  #elif defined(__APPLE__) || defined(__NetBSD__) || defined(__OpenBSD__)
          mprotect(m_memory, m_size, PROT_READ | PROT_WRITE);
  #endif
-@@ -137,6 +377,10 @@ public:
+@@ -137,6 +394,10 @@ public:
  
  protected:
      std::uint32_t* m_memory;

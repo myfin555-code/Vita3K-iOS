@@ -10,6 +10,7 @@ import SwiftUI
 ///
 /// The dimming is computed from each cover's distance to the viewport centre
 /// with `visualEffect`; see the note in `cover(_:side:)`.
+@available(iOS 17.0, *)
 @MainActor
 struct CoverCarousel<Menu: View>: View {
     let games: [GameEntry]
@@ -90,14 +91,14 @@ struct CoverCarousel<Menu: View>: View {
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $scrolledID, anchor: .center)
             .scrollIndicators(.hidden)
-            .onChange(of: gamesKey, initial: true) { _, _ in
+            .compatibleOnChange(of: gamesKey, initial: true) { _, _ in
                 rebuildItems()
                 if scrolledID == nil, let first = games.first {
                     scrolledID = "\(middleRepeat)-\(first.titleID)"
                 }
             }
         }
-        .onChange(of: scrolledID) { oldValue, newValue in
+        .compatibleOnChange(of: scrolledID) { oldValue, newValue in
             guard let newValue, let titleID = Self.titleID(from: newValue) else { return }
             if oldValue != nil {
                 hapticTrigger += 1
@@ -119,7 +120,7 @@ struct CoverCarousel<Menu: View>: View {
         // carousel does not step by the whole accumulated history, then step
         // by the delta on each subsequent change.
         .onAppear { lastConsumedStep = stepAccumulator }
-        .onChange(of: stepAccumulator) { _, new in
+        .compatibleOnChange(of: stepAccumulator) { _, new in
             let delta = new - lastConsumedStep
             lastConsumedStep = new
             if delta != 0 { stepCarousel(by: delta) }
@@ -174,7 +175,7 @@ struct CoverCarousel<Menu: View>: View {
                 .brightness(-0.22 * distance)
                 .saturation(1 - 0.2 * distance)
         }
-        .contentShape(.rect)
+        .contentShape(Rectangle())
         .onTapGesture { onLaunch(game) }
         .contextMenu { menu(game) }
         .accessibilityElement(children: .combine)

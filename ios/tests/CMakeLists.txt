@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.22)
+project(Vita3KiOSNativeSupportTests LANGUAGES CXX)
+enable_testing()
+add_executable(ime_text_tests IMETextTests.cpp)
+target_compile_features(ime_text_tests PRIVATE cxx_std_17)
+target_include_directories(ime_text_tests PRIVATE ../../vita3k/ime/include)
+add_test(NAME ime_text_tests COMMAND ime_text_tests)

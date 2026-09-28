@@ -477,16 +477,19 @@ NSString *display_title(NSString *identifier, NSString *original) {
 // is assigned, so handing out a fresh object per call made cell reuse pay for
 // a full effect teardown on every dequeue.
 UIVisualEffect *glass_effect(const BOOL interactive = YES) {
-    static UIGlassEffect *live = nil;
-    static UIGlassEffect *stat = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        live = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
-        live.interactive = YES;
-        stat = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
-        stat.interactive = NO;
-    });
-    return interactive ? live : stat;
+    if (@available(iOS 26.0, *)) {
+        static UIGlassEffect *live = nil;
+        static UIGlassEffect *stat = nil;
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{
+            live = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+            live.interactive = YES;
+            stat = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+            stat.interactive = NO;
+        });
+        return interactive ? live : stat;
+    }
+    return [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
 }
 
 // Whether surfaces drawn over a running game still use Liquid Glass.
@@ -504,10 +507,13 @@ BOOL in_game_liquid_glass_enabled() {
 // banners leave it off so they cost a single composite instead of a live
 // refraction pass.
 UIVisualEffect *glass_effect_tinted(UIColor *tint, const BOOL interactive = NO) {
-    UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
-    effect.interactive = interactive;
-    effect.tintColor = tint;
-    return effect;
+    if (@available(iOS 26.0, *)) {
+        UIGlassEffect *effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+        effect.interactive = interactive;
+        effect.tintColor = tint;
+        return effect;
+    }
+    return [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
 }
 
 // Liquid Glass shapes use continuous ("squircle") corners, not circular arcs.
@@ -845,8 +851,11 @@ void present_settings_sheet(NSString *title_id, NSString *display_name) {
 }
 
 void show_jit_required_alert() {
-    present_alert(@"JIT required",
-        @"Open StikDebug, enable JIT, and keep it attached until Tsubomi finishes Preparing JIT.");
+    UIViewController *root = active_window().rootViewController;
+    while (root.presentedViewController)
+        root = root.presentedViewController;
+    if (root)
+        [root presentViewController:[TsubomiJITHost viewController] animated:YES completion:nil];
 }
 
 void show_graphics_help() {
@@ -912,7 +921,7 @@ static void attach_library_view(UIView *host) {
 }
 // Last-known JIT availability, applied whenever the library is (re)shown so the
 // banner is correct even across library rebuilds between game sessions.
-static BOOL g_jit_available = YES;
+static BOOL g_jit_available = NO;
 // A quit game's SDL/Metal drawable can be torn down over several runloop
 // ticks, not just the one after vita3k_ios_show_library reasserts visibility
 // - if settings gets opened (or the library redraws) in that window, the
@@ -1381,7 +1390,9 @@ void vita3k_ios_show_library(const std::vector<Vita3KIOSGameEntry> &games,
             [defaults setBool:YES forKey:@"tsubomi.onboarded"];
             [g_onboarding_controller.view removeFromSuperview];
             g_onboarding_controller = nil;
-        } else if (![defaults boolForKey:@"tsubomi.onboarded"] || !settingsCopy.firmware_ready) {
+        } else if (![defaults boolForKey:@"tsubomi.onboarded"]
+            || !settingsCopy.font_package_ready || !settingsCopy.main_firmware_ready
+            || (!settingsCopy.preinstalled_package_ready && ![defaults boolForKey:@"tsubomi.skipPreinstall"])) {
             if (!g_onboarding_controller) {
                 // Firmware progress reaches the flow through FirmwareState,
                 // pushed from the same snapshot above, so there is no

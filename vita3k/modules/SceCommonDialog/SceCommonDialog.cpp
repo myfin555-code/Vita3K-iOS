@@ -21,6 +21,7 @@
 #include <dialog/types.h>
 #include <emuenv/app_util.h>
 #include <ime/state.h>
+#include <ime/text.h>
 #include <io/device.h>
 #include <io/functions.h>
 #include <io/vfs.h>
@@ -231,10 +232,15 @@ EXPORT(int, sceImeDialogInit, const Ptr<SceImeDialogParam> param) {
     emuenv.common_dialog.ime.cancelable = (p->dialogMode == SCE_IME_DIALOG_DIALOG_MODE_WITH_CANCEL);
     emuenv.common_dialog.ime.result = p->inputTextBuffer.get(emuenv.mem);
 
+    text.resize(ime::text_length(text, p->maxTextLength));
     // shared ime struct so ime funcs can work for ime_dialog
     {
         std::lock_guard lock2(emuenv.ime.mutex);
+        ++emuenv.ime.generation;
         emuenv.ime.str = text;
+        emuenv.ime.param.type = p->type;
+        emuenv.ime.param.option = p->option;
+        emuenv.ime.param.enterLabel = p->enterLabel;
         emuenv.ime.caretIndex = static_cast<uint32_t>(text.size());
         emuenv.ime.edit_text = {};
         emuenv.ime.edit_text.caretIndex = emuenv.ime.caretIndex;

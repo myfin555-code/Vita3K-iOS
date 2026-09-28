@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Mandatory first-run flow: six forward-only pages, three of which gate on an
-/// official firmware package actually being installed.
+/// First-run flow with optional pre-install firmware and required font/main packages.
 ///
 /// The UIKit version carried ~250 lines of constraint work to keep the card
 /// legible across rotation — an explicit safe-area-derived width, separate
@@ -15,24 +14,24 @@ import SwiftUI
 /// that body calls agree with it.
 @MainActor
 struct OnboardingView: View {
-    /// Called once the user finishes the last page with firmware installed.
+    /// Called once the user finishes setup, allowing pre-install firmware to be deferred.
     let onFinish: () -> Void
 
     @State private var pageIndex = 0
+    @AppStorage("tsubomi.skipPreinstall") private var skipsPreinstall = false
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Computed rather than stored: touching a @MainActor singleton from a
-    /// struct's property initializer would be an isolation violation.
-    /// @Observable tracks the reads either way.
-    private var firmware: FirmwareState { FirmwareState.shared }
+    /// Observe asynchronous installation updates on every supported iOS version.
+    @ObservedObject private var firmware = FirmwareState.shared
 
     /// The install runs on the emulator thread and reports progress through the
     /// library's busy state. Onboarding covers the library, so that indicator
     /// is not visible from here - without surfacing it, choosing a firmware
     /// file looks like it did nothing at all.
-    private var installProgress: String? { LibraryState.shared.busyMessage }
+    @ObservedObject private var library = LibraryState.shared
+    private var installProgress: String? { library.busyMessage }
 
     /// Short phones in landscape get tighter metrics so every page still fits.
     private var isCompact: Bool { verticalSizeClass == .compact }
@@ -87,7 +86,12 @@ struct OnboardingView: View {
     private var page: Page { Self.pages[pageIndex] }
     private var isLastPage: Bool { pageIndex == Self.pages.count - 1 }
 
-    /// A firmware page cannot be advanced past until its package is installed.
+    private var canFinishSetup: Bool {
+        firmware.fontPackageReady && firmware.mainFirmwareReady
+            && (firmware.preinstalledReady || skipsPreinstall)
+    }
+
+    /// Next requires installation; pre-install firmware also offers Skip.
     private var requirementSatisfied: Bool {
         guard let requirement = page.requirement else { return true }
         return requirement.isSatisfied(by: firmware)
@@ -121,7 +125,7 @@ struct OnboardingView: View {
                     .foregroundStyle(.tint)
                     // Symbols are how the user perceives the page changing;
                     // a bounce on arrival reads as the step advancing.
-                    .symbolEffect(.bounce, value: pageIndex)
+                    .compatibleBounce(value: pageIndex)
                     .accessibilityHidden(true)
             }
 
@@ -144,7 +148,7 @@ struct OnboardingView: View {
                 Label("Installed", systemImage: "checkmark.circle.fill")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.green)
-                    .symbolEffect(.bounce, value: requirementSatisfied)
+                    .compatibleBounce(value: requirementSatisfied)
                     .transition(.scale.combined(with: .opacity))
             }
         }
@@ -154,8 +158,8 @@ struct OnboardingView: View {
             insertion: .move(edge: .trailing).combined(with: .opacity),
             removal: .move(edge: .leading).combined(with: .opacity)
         ))
-        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: pageIndex)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: requirementSatisfied)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: pageIndex)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: requirementSatisfied)
     }
 
     @ViewBuilder
@@ -174,7 +178,7 @@ struct OnboardingView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .glassEffect(.regular, in: .capsule)
+                .compatibleGlass(Capsule())
                 .transition(.opacity)
             } else if page.requirement != nil {
                 // Before the package is installed, choosing a file is the job.
@@ -186,12 +190,12 @@ struct OnboardingView: View {
                     Button("Choose Firmware File") {
                         Bridge.presentFirmwareImportPicker()
                     }
-                    .buttonStyle(.glass)
+                    .compatibleGlassButton()
                 } else {
                     Button("Choose Firmware File") {
                         Bridge.presentFirmwareImportPicker()
                     }
-                    .buttonStyle(.glassProminent)
+                    .compatibleGlassButton(prominent: true)
                 }
             }
 
@@ -200,33 +204,41 @@ struct OnboardingView: View {
                     Bridge.markOnboardingComplete()
                     onFinish()
                 }
-                .buttonStyle(.glassProminent)
-                // The last page still gates on all three packages: a user who
-                // somehow reached it without them must not get into the library.
-                .disabled(!firmware.allPackagesReady)
+                .compatibleGlassButton(prominent: true)
+                .disabled(!canFinishSetup || installProgress != nil)
             } else if page.requirement == nil {
                 // No firmware button on this page, so Next is the primary.
                 Button("Next") { pageIndex += 1 }
-                    .buttonStyle(.glassProminent)
+                    .compatibleGlassButton(prominent: true)
             } else if requirementSatisfied {
                 // The package is in: this is now the only thing left to do.
                 Button("Next") { pageIndex += 1 }
-                    .buttonStyle(.glassProminent)
+                    .compatibleGlassButton(prominent: true)
             } else {
                 // Plain glass and disabled: "Choose Firmware File" above is
                 // the primary until its package is installed, and only one
                 // element per screen should carry the tint.
                 Button("Next") { pageIndex += 1 }
-                    .buttonStyle(.glass)
+                    .compatibleGlassButton()
                     .disabled(true)
+            }
+
+            if page.requirement == .preinstalled && !requirementSatisfied {
+                Button("Skip") {
+                    skipsPreinstall = true
+                    pageIndex += 1
+                }
+                .compatibleGlassButton()
+                .disabled(installProgress != nil)
+                .accessibilityHint("Install pre-install firmware later and continue to font firmware")
             }
 
             progressDots
         }
         .controlSize(.large)
         .frame(maxWidth: .infinity)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: requirementSatisfied)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: installProgress)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: requirementSatisfied)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: installProgress)
     }
 
     /// Page indicator. Forward-only, so the dots are a progress readout rather
@@ -241,7 +253,7 @@ struct OnboardingView: View {
             }
         }
         .padding(.top, 4)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: pageIndex)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: pageIndex)
         .accessibilityElement()
         .accessibilityLabel("Step \(pageIndex + 1) of \(Self.pages.count)")
     }

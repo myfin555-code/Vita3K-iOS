@@ -20,6 +20,8 @@
 // vita3k/android/jni/main_android.cpp and the bootstrap sequence in
 // vita3k/android/jni/native_bootstrap.cpp.
 
+#include <vita3k_ios/IOSJIT.h>
+#include <vita3k_ios/IOSKeyboard.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
@@ -387,6 +389,8 @@ bool ios_jit_capability_enabled() {
 // iOS 26 universal JIT needs the debugger attached while the permanent RX/RW
 // region pool is prepared. CS_DEBUGGED survives a detach, but it is not enough
 // to service Oaknut's BRK request. Once the pool is complete, detaching is safe.
+bool prepare_ios_jit_pool();
+
 bool ios_jit_available() {
 #if !defined(__aarch64__)
     // x86_64 Simulator: the iOS 26 universal-JIT/debugger model does not apply.
@@ -395,7 +399,8 @@ bool ios_jit_available() {
     return true;
 #else
     return g_jit_pool_ready.load(std::memory_order_relaxed)
-        || (ios_jit_capability_enabled() && ios_debugger_attached());
+        || vita3k_ios_can_allocate_jit()
+        || (vita3k_ios_supports_universal_jit() && ios_jit_capability_enabled() && ios_debugger_attached());
 #endif
 }
 
@@ -2360,8 +2365,8 @@ std::optional<AppLaunchRequest> choose_boot_title(EmuEnvState &emuenv) {
                 // Defense in depth: the library already refuses launches without
                 // JIT, but re-probe here so a debugger attached after the probe
                 // is honored and one attached-then-detached is caught.
-                if (!ios_jit_available()) {
-                    LOG_WARN("Refusing launch of '{}': JIT is not available (no debugger attached).",
+                if (!ios_jit_available() || !prepare_ios_jit_pool()) {
+                    LOG_WARN("Refusing launch of '{}': JIT memory preparation has not succeeded.",
                         action->app_path);
                     vita3k_ios_set_jit_available(false);
                     break;
@@ -2519,7 +2524,10 @@ std::optional<AppLaunchRequest> choose_boot_title(EmuEnvState &emuenv) {
             const Uint64 now_ms = SDL_GetTicks();
             if (now_ms - last_jit_probe_ms >= 1000) {
                 last_jit_probe_ms = now_ms;
-                vita3k_ios_set_jit_available(ios_jit_available());
+                if (!g_jit_pool_ready.load(std::memory_order_relaxed) && ios_jit_available()
+                    && prereserve_guest_memory())
+                    prepare_ios_jit_pool();
+                vita3k_ios_set_jit_available(g_jit_pool_ready.load(std::memory_order_relaxed));
             }
         }
 
@@ -2648,7 +2656,12 @@ bool prepare_ios_jit_pool() {
     vita3k_ios_set_jit_available(true);
     return true;
 #else
-    if (!ios_debugger_attached())
+    if (vita3k_ios_can_allocate_jit()) {
+        g_jit_pool_ready.store(true, std::memory_order_relaxed);
+        vita3k_ios_set_jit_available(true);
+        return true;
+    }
+    if (!vita3k_ios_supports_universal_jit() || !ios_debugger_attached())
         return false;
 
     g_unhandled_universal_jit_breakpoint.store(false, std::memory_order_relaxed);
@@ -2670,6 +2683,11 @@ bool prepare_ios_jit_pool() {
         return false;
     }
 
+    if (ios_debugger_attached()) {
+        vita3k_ios_detach_jit_debugger();
+        if (g_unhandled_universal_jit_breakpoint.exchange(false, std::memory_order_relaxed))
+            return false;
+    }
     g_jit_pool_ready.store(true, std::memory_order_relaxed);
     vita3k_ios_set_jit_available(true);
     return true;
@@ -2734,10 +2752,10 @@ int main(int argc, char *argv[]) {
     vita3k_ios_apply_orientation_lock();
 
     const bool initial_jit_available = ios_jit_available();
-    vita3k_ios_set_jit_available(initial_jit_available);
+    vita3k_ios_set_jit_available(false);
     LOG_INFO("iOS JIT availability probe: {}",
-        initial_jit_available ? "available (process is traced)"
-                              : "unavailable (no debugger attached)");
+        initial_jit_available ? "permission detected; memory preparation pending"
+                              : "unavailable; enable a compatible JIT method");
 
     // Reserve the guest address space FIRST (the 24 JIT mappings fragment it
     // otherwise and mem::init later fails with ENOMEM), then allocate the JIT
@@ -2938,6 +2956,7 @@ int main(int argc, char *argv[]) {
 
     bool running = true;
     while (running) {
+        vita3k_ios_update_keyboard(*emuenv);
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
@@ -3068,6 +3087,7 @@ int main(int argc, char *argv[]) {
             vita3k_ios_pump_runloop(0.016);
     }
 
+    vita3k_ios_close_keyboard();
     LOG_INFO("Shutting down game");
     stop_guest_watchdog.store(true, std::memory_order_relaxed);
     guest_watchdog.join();

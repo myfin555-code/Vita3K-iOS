@@ -22,7 +22,7 @@ import UIKit
 /// Everything visible - the controls, their glass, the layout editor - is
 /// SwiftUI. This view is transparent and sits on top of it.
 struct ControlTouchSurface: UIViewRepresentable {
-    let model: ControlsModel
+    @ObservedObject var model: ControlsModel
     /// Called when the menu control is tapped.
     let onMenuTap: () -> Void
 

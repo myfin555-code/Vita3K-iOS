@@ -14,8 +14,8 @@ import SwiftUI
 /// reimplemented.
 @MainActor
 struct SettingsView: View {
-    @State private var model: SettingsModel
-    @State private var runtimeLatch = RuntimeLatch.shared
+    @StateObject private var model: SettingsModel
+    @ObservedObject private var runtimeLatch = RuntimeLatch.shared
     @AppStorage("tsubomi.orientationLockEnabled")
     private var orientationLockEnabled = false
     @AppStorage("tsubomi.orientationLock")
@@ -31,7 +31,7 @@ struct SettingsView: View {
     @State private var showingRuntimeNotice = false
 
     init(scope: SettingsModel.Scope, onFinish: @escaping () -> Void) {
-        _model = State(initialValue: SettingsModel(scope: scope))
+        _model = StateObject(wrappedValue: SettingsModel(scope: scope))
         self.onFinish = onFinish
     }
 
@@ -42,6 +42,7 @@ struct SettingsView: View {
                     runtimeSection
                 }
                 if !model.isPerGame {
+                    Section { NavigationLink("JIT") { JITSettingsView() } }
                     generalSection
                     librarySection
                 }
@@ -91,7 +92,7 @@ struct SettingsView: View {
             DefaultsToggle("Interface sound effects", key: .soundEffects)
             DefaultsToggle("Liquid Glass", key: .liquidGlassInGame)
             Toggle("Orientation lock", isOn: $orientationLockEnabled)
-                .onChange(of: orientationLockEnabled) { _, isEnabled in
+                .compatibleOnChange(of: orientationLockEnabled) { _, isEnabled in
                     Bridge.setOrientationLockEnabled(isEnabled)
                 }
             if orientationLockEnabled {
@@ -100,7 +101,7 @@ struct SettingsView: View {
                         Text(option.title).tag(option.rawValue)
                     }
                 }
-                .onChange(of: orientationLock) { _, newValue in
+                .compatibleOnChange(of: orientationLock) { _, newValue in
                     Bridge.applyOrientationLock(newValue)
                 }
             }
@@ -266,7 +267,7 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.menu)
-            .onChange(of: librarySort) { _, newValue in
+            .compatibleOnChange(of: librarySort) { _, newValue in
                 LibraryState.shared.setSortOption(rawValue: newValue)
             }
             Button {
@@ -306,7 +307,7 @@ struct SettingsView: View {
                 Text(model.firmwareVersion.isEmpty ? "Not installed" : model.firmwareVersion)
                     .foregroundStyle(.secondary)
             }
-            .contentShape(.rect)
+            .contentShape(Rectangle())
             .onTapGesture {
                 if runtimeLatch.record(0x6D4E_13B7) {
                     showingRuntimeNotice = true
@@ -319,7 +320,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             LabeledContent("Version", value: AppInfo.versionDisplay)
-                .contentShape(.rect)
+                .contentShape(Rectangle())
                 .onTapGesture {
                     if runtimeLatch.record(0xA29C_508D) {
                         showingRuntimeNotice = true
@@ -396,7 +397,7 @@ enum OrientationLockOption: String, CaseIterable, Identifiable {
 /// more than a section should carry, and it keeps the root list short.
 @MainActor
 private struct FaceButtonLayoutView: View {
-    @Bindable var model: SettingsModel
+    @ObservedObject var model: SettingsModel
 
     private static let positions = ["Bottom", "Right", "Left", "Top"]
 

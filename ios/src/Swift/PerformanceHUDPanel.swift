@@ -40,7 +40,7 @@ struct PerformanceHUDPanel: View {
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
-        .presentationBackground(.regularMaterial)
+        .compatiblePresentationBackground()
     }
 
     /// Turning any metric on clears the flag that hid the overlay wholesale,
