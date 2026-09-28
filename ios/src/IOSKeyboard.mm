@@ -122,6 +122,9 @@ NSString *native_text(const std::u16string &value) {
         self.pendingEvent = SCE_IME_EVENT_PRESS_ENTER;
     }
     self.finished = YES;
+    self.editor.delegate = nil;
+    [self.editor resignFirstResponder];
+    self.panel.hidden = YES;
 }
 - (void)cancel {
     if (!self.cancelable || self.finished || !self.environment)
@@ -139,6 +142,9 @@ NSString *native_text(const std::u16string &value) {
         self.pendingEvent = SCE_IME_EVENT_PRESS_CLOSE;
     }
     self.finished = YES;
+    self.editor.delegate = nil;
+    [self.editor resignFirstResponder];
+    self.panel.hidden = YES;
 }
 @end
 
@@ -188,6 +194,10 @@ void vita3k_ios_update_keyboard(EmuEnvState &env) {
         }
     }
     if (!active) {
+        vita3k_ios_close_keyboard();
+        return;
+    }
+    if (keyboard && keyboard.finished && !keyboard.pendingEvent && !keyboard.awaitingResponse) {
         vita3k_ios_close_keyboard();
         return;
     }
