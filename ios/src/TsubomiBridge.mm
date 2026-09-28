@@ -393,6 +393,10 @@ id bridge_games() {
     vita3k_ios_internal::queue_frontend_action(std::move(action));
 }
 
++ (void)refreshFirmwareState {
+    vita3k_ios_request_firmware_refresh();
+}
+
 + (void)refreshLibrary {
     Vita3KIOSFrontendAction action;
     action.kind = Vita3KIOSFrontendActionKind::Refresh;

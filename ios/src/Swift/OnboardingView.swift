@@ -19,6 +19,8 @@ struct OnboardingView: View {
 
     @State private var pageIndex = 0
 
+    @Environment(\.scenePhase) private var scenePhase
+
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -107,6 +109,17 @@ struct OnboardingView: View {
         // Forward-only: there is no back affordance, and the flow cannot be
         // dismissed interactively.
         .interactiveDismissDisabled()
+        .onAppear { checkInstalledFiles() }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { checkInstalledFiles() }
+        }
+    }
+
+    private func checkInstalledFiles() {
+        // The core owns the filesystem; ask it for a fresh snapshot instead
+        // of reusing the bridge's cached settings or persisting success flags.
+        guard installProgress == nil else { return }
+        Bridge.refreshFirmwareState()
     }
 
     private var pageContent: some View {
@@ -206,6 +219,7 @@ struct OnboardingView: View {
                 // The package is in: this is now the only thing left to do.
                 Button("Next") { pageIndex += 1 }
                     .compatibleGlassButton(prominent: true)
+                    .disabled(installProgress != nil)
             } else {
                 // Plain glass and disabled: "Choose Firmware File" above is
                 // the primary until its package is installed, and only one
@@ -213,6 +227,11 @@ struct OnboardingView: View {
                 Button("Next") { pageIndex += 1 }
                     .compatibleGlassButton()
                     .disabled(true)
+            }
+
+            if page.requirement != nil {
+                Button("Check Installed Files") { checkInstalledFiles() }
+                    .disabled(installProgress != nil)
             }
 
             progressDots

@@ -221,3 +221,7 @@ void vita3k_ios_show_boot_error(const std::string &message);
 // log overlay: cheap to poll (a small in-memory ring buffer, no file IO), so
 // the frontend can call it every frame or two while the overlay is visible.
 std::vector<std::string> vita3k_ios_recent_log_lines();
+
+/// Firmware rechecks are independent of the pending import/launch action.
+void vita3k_ios_request_firmware_refresh();
+bool vita3k_ios_consume_firmware_refresh();

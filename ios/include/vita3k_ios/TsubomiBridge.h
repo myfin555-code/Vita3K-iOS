@@ -183,6 +183,9 @@ NS_SWIFT_NAME(Bridge)
 /// Ask the core to rescan installed titles.
 + (void)refreshLibrary;
 
+/// Recheck installed firmware without rescanning games.
++ (void)refreshFirmwareState;
+
 /// Re-derive the library entries from the core's last snapshot. Used after a
 /// frontend-only change (a rename) that the core has no new data for.
 + (NSArray<TsubomiGameEntry *> *)libraryEntries;

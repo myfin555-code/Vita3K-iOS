@@ -21,6 +21,7 @@
 #undef Ptr
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <mutex>
 #include <utility>
@@ -913,6 +914,13 @@ std::string hex_bytes(const std::string &value) {
 // Onboarding is added over the library's view, so it is retained alongside it.
 static UIViewController *g_onboarding_controller = nil;
 
+static void remove_onboarding_view() {
+    [g_onboarding_controller beginAppearanceTransition:NO animated:NO];
+    [g_onboarding_controller.view removeFromSuperview];
+    [g_onboarding_controller endAppearanceTransition];
+    g_onboarding_controller = nil;
+}
+
 // Convenience for the many call sites that only want the library's view.
 static UIView *library_view() {
     return g_library_controller.view;
@@ -1407,8 +1415,7 @@ void vita3k_ios_show_library(const std::vector<Vita3KIOSGameEntry> &games,
             // Existing installs that contain the main firmware and fonts never
             // see onboarding, even when upgrading from a build predating it.
             [defaults setBool:YES forKey:@"tsubomi.onboarded"];
-            [g_onboarding_controller.view removeFromSuperview];
-            g_onboarding_controller = nil;
+            remove_onboarding_view();
         } else if (![defaults boolForKey:@"tsubomi.onboarded"]
             || !settingsCopy.font_package_ready || !settingsCopy.main_firmware_ready) {
             if (!g_onboarding_controller) {
@@ -1418,8 +1425,7 @@ void vita3k_ios_show_library(const std::vector<Vita3KIOSGameEntry> &games,
                 g_onboarding_controller =
                     [TsubomiOnboardingHost onboardingViewControllerWithFinishHandler:^{
                         void (^removeOnboarding)(void) = ^{
-                            [g_onboarding_controller.view removeFromSuperview];
-                            g_onboarding_controller = nil;
+                            remove_onboarding_view();
                         };
                         if (UIAccessibilityIsReduceMotionEnabled()) {
                             removeOnboarding();
@@ -1429,11 +1435,15 @@ void vita3k_ios_show_library(const std::vector<Vita3KIOSGameEntry> &games,
                             } completion:^(__unused BOOL finished) { removeOnboarding(); }];
                         }
                     }];
+                // Like the library host, this controller has no UIKit parent.
+                // Deliver appearance events so SwiftUI activates its observable
+                // subscriptions and onAppear even on iOS 16/17/18.
+                [g_onboarding_controller beginAppearanceTransition:YES animated:NO];
                 UIView *onboarding = g_onboarding_controller.view;
                 onboarding.frame = library_view().bounds;
-                onboarding.autoresizingMask =
-                    UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                onboarding.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
                 [library_view() addSubview:onboarding];
+                [g_onboarding_controller endAppearanceTransition];
             }
             [library_view() bringSubviewToFront:g_onboarding_controller.view];
         }
@@ -1486,6 +1496,18 @@ void vita3k_ios_show_library(const std::vector<Vita3KIOSGameEntry> &games,
     });
 }
 
+namespace {
+std::atomic_bool g_firmware_refresh_requested{ false };
+}
+
+void vita3k_ios_request_firmware_refresh() {
+    g_firmware_refresh_requested.store(true);
+}
+
+bool vita3k_ios_consume_firmware_refresh() {
+    return g_firmware_refresh_requested.exchange(false);
+}
+
 void vita3k_ios_update_library(const std::vector<Vita3KIOSGameEntry> &games,
     const Vita3KIOSSettings &settings) {
     const std::vector<Vita3KIOSGameEntry> gamesCopy = games;
@@ -1499,6 +1521,7 @@ void vita3k_ios_hide_library() {
     perform_on_main(^{
         [Vita3KPadNavigator.shared stop];
         set_metal_drawables_hidden(library_view().window ?: active_window(), NO);
+        remove_onboarding_view();
         // Matches the manual appearance transition in show_library; there is
         // no containment to unwind.
         [g_library_controller beginAppearanceTransition:NO animated:NO];
@@ -1507,8 +1530,6 @@ void vita3k_ios_hide_library() {
         [library_view() removeFromSuperview];
         [g_library_controller endAppearanceTransition];
         g_library_controller = nil;
-        [g_onboarding_controller.view removeFromSuperview];
-        g_onboarding_controller = nil;
         [g_library_metal_hide_timer invalidate];
         g_library_metal_hide_timer = nil;
     });

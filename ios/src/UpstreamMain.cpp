@@ -2384,7 +2384,7 @@ std::optional<AppLaunchRequest> choose_boot_title(EmuEnvState &emuenv) {
             g_import_job.reset();
             if (rescan_apps && !was_firmware && !app::init_apps_list(emuenv))
                 LOG_ERROR("Failed to rescan apps list after import.");
-            if (rescan_apps || (success && refresh_library)) {
+            if (was_firmware || rescan_apps || (success && refresh_library)) {
                 games = native_games(emuenv);
                 vita3k_ios_update_library(games, native_settings(emuenv));
             }
@@ -2393,6 +2393,15 @@ std::optional<AppLaunchRequest> choose_boot_title(EmuEnvState &emuenv) {
                 vita3k_ios_share_file(share_path);
             if (success && rescan_apps && !was_firmware)
                 maybe_prompt_license_import(emuenv, installed_applications);
+        }
+
+        // Defer disk rechecks until the installer has finished writing files.
+        // This flag cannot replace an import waiting in the frontend action slot.
+        if (!g_import_job && vita3k_ios_consume_firmware_refresh()) {
+            const auto settings = native_settings(emuenv);
+            LOG_INFO("iOS firmware check at '{}': fonts={}, main={}",
+                emuenv.vita_fs_path, settings.font_package_ready, settings.main_firmware_ready);
+            vita3k_ios_update_library(games, settings);
         }
 
         if (auto action = vita3k_ios_take_frontend_action()) {
