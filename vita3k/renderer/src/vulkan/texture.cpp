@@ -17,6 +17,8 @@
 
 #include <renderer/vulkan/functions.h>
 
+#include <config/state.h>
+
 #include <renderer/vulkan/gxm_to_vulkan.h>
 
 #include <vulkan/vulkan_format_traits.hpp>
@@ -114,13 +116,15 @@ void sync_texture(VKContext &context, MemState &mem, std::size_t index, SceGxmTe
 
     TextureViewport texture_viewport{};
 
-    if (renderer::texture::convert_base_texture_format_to_base_color_format(base_format, format_target_of_texture)) {
+    // Surface cache views are 2D; cube samplers require all six faces from the texture uploader.
+    const bool texture_is_cube = texture.texture_type() == SCE_GXM_TEXTURE_CUBE || texture.texture_type() == SCE_GXM_TEXTURE_CUBE_ARBITRARY;
+    if (!texture_is_cube && renderer::texture::convert_base_texture_format_to_base_color_format(base_format, format_target_of_texture)) {
         // try to retrieve it from the color surface cache
         lookup_result = context.state.surface_cache.retrieve_color_surface_as_texture(texture, format_target_of_texture, &texture_viewport);
     }
 
     bool is_depth_surface = false;
-    if (!lookup_result.has_value() && is_depth_stencil_compatible_format(base_format, is_depth_surface)) {
+    if (!lookup_result.has_value() && !texture_is_cube && is_depth_stencil_compatible_format(base_format, is_depth_surface)) {
         // Try to retrieve depth/stencil cache
         lookup_result = context.state.surface_cache.retrieve_depth_stencil_as_texture(texture, &texture_viewport);
     }
@@ -204,8 +208,7 @@ void VKTextureCache::prepare_staging_buffer(bool is_configure) {
     // if we are not using the previous buffer, we wait if the buffer was used at least once,
     // less than MAX_FRAMES_RENDERING frames ago and we have not yet waited for its fence
     const bool need_wait = !use_previous_buffer
-        && staging_buffer->frame_timestamp != ~0
-        && staging_buffer->frame_timestamp > context->frame_timestamp - MAX_FRAMES_RENDERING
+        && is_frame_timestamp_in_flight(staging_buffer->frame_timestamp, context->frame_timestamp)
         && staging_buffer->scene_timestamp > last_waited_scene;
     const vk::Fence current_fence = context->next_fence;
 
@@ -606,7 +609,7 @@ void VKTextureCache::configure_sampler(size_t index, const SceGxmTexture &textur
         .mipLodBias = (static_cast<float>(texture.lod_bias) - 31.f) / 8.f,
         .maxAnisotropy = static_cast<float>(anisotropic_filtering),
         .compareEnable = VK_FALSE,
-        .minLod = static_cast<float>(texture.lod_min0 | (texture.lod_min1 << 2)),
+        .minLod = static_cast<float>(texture.true_lod_min()),
         .maxLod = VK_LOD_CLAMP_NONE,
         .unnormalizedCoordinates = VK_FALSE,
     };

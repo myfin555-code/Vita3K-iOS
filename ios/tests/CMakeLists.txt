@@ -23,3 +23,8 @@ add_executable(pipeline_cache_data_tests PipelineCacheDataTests.cpp)
 target_compile_features(pipeline_cache_data_tests PRIVATE cxx_std_17)
 target_include_directories(pipeline_cache_data_tests PRIVATE ../../vita3k/renderer/include)
 add_test(NAME pipeline_cache_data_tests COMMAND pipeline_cache_data_tests)
+
+add_executable(frame_lifetime_tests FrameLifetimeTests.cpp)
+target_compile_features(frame_lifetime_tests PRIVATE cxx_std_17)
+target_include_directories(frame_lifetime_tests PRIVATE ../../vita3k/renderer/include)
+add_test(NAME frame_lifetime_tests COMMAND frame_lifetime_tests)

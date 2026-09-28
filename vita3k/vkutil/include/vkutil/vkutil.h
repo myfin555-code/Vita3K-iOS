@@ -98,6 +98,14 @@
 #pragma clang diagnostic ignored "-Wnullability-completeness"
 #endif
 
+// Vulkan-Hpp 1.4.323 renamed this exception; the pinned VMA-Hpp still uses
+// the EXT spelling. MoltenVK 1.4.2 bundles header 357. Keep the adapter here
+// until the VMA dependency adopts the new name (older SDKs retain theirs).
+#if VK_HEADER_VERSION >= 323 && !defined(VULKAN_HPP_NO_EXCEPTIONS)
+namespace VULKAN_HPP_NAMESPACE {
+using ValidationFailedEXTError = ValidationFailedError;
+}
+#endif
 #include <vk_mem_alloc.hpp>
 
 #if defined(__clang__)

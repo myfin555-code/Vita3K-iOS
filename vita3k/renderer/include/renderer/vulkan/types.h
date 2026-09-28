@@ -19,6 +19,7 @@
 
 #include <renderer/texture_cache.h>
 #include <renderer/types.h>
+#include <renderer/vulkan/frame_lifetime.h>
 #include <shader/uniform_block.h>
 #include <vkutil/objects.h>
 
@@ -29,12 +30,11 @@ namespace renderer::vulkan {
 struct VKState;
 struct VKRenderTarget;
 
-constexpr int MAX_FRAMES_RENDERING = 3;
 constexpr int NB_TEXTURE_STAGING_BUFFERS = 16;
 
 struct TextureStagingBuffer {
     vkutil::Buffer buffer;
-    uint32_t used_so_far;
+    uint32_t used_so_far = 0;
     uint64_t scene_timestamp = ~0;
     uint64_t frame_timestamp = ~0;
     vk::Fence waiting_fence;
@@ -344,6 +344,8 @@ struct VKRenderTarget : public renderer::RenderTarget {
     vk::Device device;
     uint16_t width;
     uint16_t height;
+    uint16_t base_width;
+    uint16_t base_height;
     vkutil::Image color;
     vkutil::Image depthstencil;
 

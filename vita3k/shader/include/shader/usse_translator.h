@@ -156,6 +156,9 @@ private:
         if (repeat_mode == RepeatMode::EXTERNAL && bank != RegisterBank::FPINTERNAL) {
             return repeat_index * 4;
         }
+        if (repeat_mode == RepeatMode::EXTERNAL) {
+            return repeat_index;
+        }
         if (repeat_mode == RepeatMode::SLMSI) {
             auto inc = repeat_increase[op.index][repeat_index];
 
@@ -197,7 +200,7 @@ private:
 
     bool m_second_program{ false };
 
-    spv::Id do_alu_op(Instruction &inst, const Imm4 source_mask, const Imm4 possible_dest_mask);
+    spv::Id do_alu_op(Instruction &inst, const Imm4 source_mask, const Imm4 possible_dest_mask, int src1_repeat_offset = 0, int src2_repeat_offset = 0);
 
 public:
     void set_secondary_program(const bool is_it) {

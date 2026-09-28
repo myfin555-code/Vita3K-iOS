@@ -214,6 +214,14 @@ bool USSETranslatorVisitor::vmov(
             spv::Id cond_result = m_b.createOp(compare_op, utils::make_vector_or_scalar_type(m_b, m_b.makeBoolType(), m_b.getNumComponents(source_to_compare_with_0)),
                 { source_to_compare_with_0, v0 });
 
+            // SPIR-V before 1.4 requires OpSelect's condition to have the same component count as the result
+            const int result_comps = m_b.getNumComponents(source_2);
+            if (m_b.getNumComponents(cond_result) == 1 && result_comps > 1) {
+                const spv::Id bvec_type = m_b.makeVectorType(m_b.makeBoolType(), result_comps);
+                const std::vector<spv::Id> cond_comps(result_comps, cond_result);
+                cond_result = m_b.createCompositeConstruct(bvec_type, cond_comps);
+            }
+
             // For each component, if the compare result is true, move the equivalent component from source1 to dest,
             // else the same thing with source2
             // This behavior matches with OpSelect, so use it. Since IMix doesn't exist (really)
@@ -679,8 +687,23 @@ bool USSETranslatorVisitor::vldst(
         if (offset % 4 != 0)
             continue;
 
+        // The slot a texture occupies in the texture buffer is chosen by the shader compiler and is not the texture unit
+        const int slot = offset / 4;
+        int texture_unit = slot;
+        const SceGxmDependentSampler *tb_layout = m_program.texture_buffer_dependent_sampler();
+        for (uint32_t i = 0; i < m_program.texture_buffer_dependent_sampler_count; i++) {
+            if (tb_layout[i].resource_index_layout_offset % 4 != 0)
+                continue;
+            if (tb_layout[i].sa_offset / 4 == slot) {
+                texture_unit = tb_layout[i].resource_index_layout_offset / 4;
+                break;
+            }
+        }
+        if (texture_unit != slot)
+            LOG_INFO("Texture buffer slot {} holds texture unit {}", slot, texture_unit);
+
         to_store.type = DataType::INT32;
-        store(to_store, m_b.makeIntConstant(offset / 4), 0b1);
+        store(to_store, m_b.makeIntConstant(texture_unit), 0b1);
         continue;
     } else if (inst.opr.src0.bank == RegisterBank::SECATTR && inst.opr.src0.num == m_spirv_params.literal_buffer_sa_offset) {
         // We are reading the literal buffer

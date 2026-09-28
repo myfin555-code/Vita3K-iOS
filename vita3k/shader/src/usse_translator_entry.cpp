@@ -899,8 +899,8 @@ spv::Id USSERecompiler::get_condition_value(const std::uint8_t pred, const bool 
 
     if (predicator >= ExtPredicate::P0 && predicator <= ExtPredicate::P3) {
         pred_opr.num = static_cast<int>(predicator) - static_cast<int>(ExtPredicate::P0);
-    } else if (predicator >= ExtPredicate::NEGP0 && predicator <= ExtPredicate::NEGP1) {
-        pred_opr.num = static_cast<int>(predicator) - static_cast<int>(ExtPredicate::NEGP0);
+    } else if ((predicator >= ExtPredicate::NEGP0 && predicator <= ExtPredicate::NEGP1) || predicator == ExtPredicate::NEGP2) {
+        pred_opr.num = predicator == ExtPredicate::NEGP2 ? 2 : static_cast<int>(predicator) - static_cast<int>(ExtPredicate::NEGP0);
         do_neg = !do_neg;
     }
 
