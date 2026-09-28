@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 option(VITA3K_BUILD_IOS "Build the experimental iOS bootstrap application" OFF)
 option(VITA3K_BUILD_IOS_UPSTREAM_CORE "Build the upstream Vita3K core for iOS" OFF)
+option(VITA3K_ENABLE_LTO "Enable link-time optimization when supported" ON)
 
 # Set the minimum before project()/toolchain initialization so every target agrees.
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -57,6 +58,17 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(CMAKE_OSX_DEPLOYMENT_TARGET 13.3)
 endif()
 
+# Optimize release builds consistently across compilers to reduce CPU overhead in the
+# emulator core and shader-heavy workloads. Keep debug builds readable and fast to iterate.
+if(NOT MSVC)
+    string(APPEND CMAKE_C_FLAGS_RELEASE " -O3 -DNDEBUG")
+    string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3 -DNDEBUG")
+    string(APPEND CMAKE_C_FLAGS_RELWITHDEBINFO " -O3 -DNDEBUG")
+    string(APPEND CMAKE_CXX_FLAGS_RELWITHDEBINFO " -O3 -DNDEBUG")
+    string(APPEND CMAKE_C_FLAGS_MINSIZEREL " -Os -DNDEBUG")
+    string(APPEND CMAKE_CXX_FLAGS_MINSIZEREL " -Os -DNDEBUG")
+endif()
+
 # workaround for SDL due to cmake bug
 # https://github.com/libsdl-org/SDL/issues/6454
 # https://gitlab.kitware.com/cmake/cmake/-/issues/24104
@@ -65,7 +77,7 @@ if(APPLE)
     if(VITA3K_BUILD_IOS_UPSTREAM_CORE)
         enable_language(OBJCXX)
         # The iOS frontend's UI is SwiftUI. Swift is enabled only for this
-        # configuration: every other platform (and the bootstrap iOS build)
+        # configuration: every other platform and the bootstrap iOS build
         # must keep configuring without a Swift toolchain present.
         enable_language(Swift)
         if(CMAKE_Swift_COMPILER_VERSION VERSION_LESS 5.9)
@@ -120,6 +132,8 @@ if(MSVC)
 	string(REPLACE "/Zi" "/Z7" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 	string(REPLACE "/Zi" "/Z7" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 	string(REPLACE "/Zi" "/Z7" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+	string(REPLACE "/Zi" "/Z7" CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL}")
+	string(REPLACE "/Zi" "/Z7" CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL}")
 endif()
 
 enable_testing()
@@ -127,33 +141,34 @@ enable_testing()
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
-set(lto_usage_mode ALWAYS RELEASE_ONLY NEVER)
-set(USE_LTO RELEASE_ONLY CACHE STRING "Use interprocedural optimization/link time optimization")
-set_property(CACHE USE_LTO PROPERTY STRINGS ${lto_usage_mode})
+if(VITA3K_ENABLE_LTO)
+	set(lto_usage_mode ALWAYS RELEASE_ONLY NEVER)
+	set(USE_LTO RELEASE_ONLY CACHE STRING "Use interprocedural optimization")
+	set_property(CACHE USE_LTO PROPERTY STRINGS ${lto_usage_mode})
 
-if (NOT (USE_LTO STREQUAL "NEVER"))
-	include(CheckIPOSupported)
-	if(ANDROID)
-		# https://gitlab.kitware.com/cmake/cmake/-/issues/21772
-		STRING(REPLACE "-fuse-ld=gold" "" CMAKE_CXX_LINK_OPTIONS_IPO "${CMAKE_CXX_LINK_OPTIONS_IPO}")
-		STRING(REPLACE "-fuse-ld=gold" "" CMAKE_C_LINK_OPTIONS_IPO "${CMAKE_C_LINK_OPTIONS_IPO}")
-		set(ipo_supported TRUE)
-	else()
-		check_ipo_supported(RESULT ipo_supported OUTPUT ipo_supported_error)
-	endif()
-
-	if( ipo_supported )
-		if (USE_LTO STREQUAL "ALWAYS")
-			set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-		elseif (USE_LTO STREQUAL "RELEASE_ONLY")
-			set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+	if (NOT (USE_LTO STREQUAL "NEVER"))
+		include(CheckIPOSupported)
+		if(ANDROID)
+			# https://gitlab.kitware.com/cmake/cmake/-/issues/21772
+			STRING(REPLACE "-fuse-ld=gold" "" CMAKE_CXX_LINK_OPTIONS_IPO "${CMAKE_CXX_LINK_OPTIONS_IPO}")
+			STRING(REPLACE "-fuse-ld=gold" "" CMAKE_C_LINK_OPTIONS_IPO "${CMAKE_C_LINK_OPTIONS_IPO}")
+			set(ipo_supported TRUE)
+		else()
+			check_ipo_supported(RESULT ipo_supported OUTPUT ipo_supported_error)
 		endif()
-	else()
-		message(STATUS "IPO / LTO not supported: <${ipo_supported_error}>")
-		set(USE_LTO NEVER CACHE STRING "Use interprocedural optimization/link time optimization")
+
+		if (ipo_supported)
+			if (USE_LTO STREQUAL "ALWAYS")
+				set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+			elseif (USE_LTO STREQUAL "RELEASE_ONLY")
+				set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+			endif()
+		else()
+			message(STATUS "IPO / LTO not supported: <${ipo_supported_error}>")
+			set(USE_LTO NEVER CACHE STRING "Use interprocedural optimization")
+		endif()
 	endif()
 endif()
-
 
 ############################
 ########## Boost ###########
@@ -201,7 +216,7 @@ macro(boost_compile)
 			WORKING_DIRECTORY ${BOOST_SOURCEDIR}
 			OUTPUT_QUIET
 		)
-	elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+	elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
 		execute_process(
 			COMMAND ${b2_cmd_line_common} --ignore-site-config toolset=${BOOST_TOOLSET} stage
 			WORKING_DIRECTORY ${BOOST_SOURCEDIR}
@@ -259,7 +274,7 @@ macro(get_boost)
 							set(BOOST_TOOLSET "msvc")
 						endif()
 					else()
-						set(BOOST_TOOLSET "msvc")
+					set(BOOST_TOOLSET "msvc")
 					endif()
 				elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
 					if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
