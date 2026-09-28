@@ -31,7 +31,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  native-support-tests:
+    name: Native IME text boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cmake -S ios/tests -B build-native-tests
+          cmake --build build-native-tests
+          ctest --test-dir build-native-tests --output-on-failure
+
   unsigned-ipa:
+    needs: native-support-tests
     name: Upstream core arm64 device link
     runs-on: macos-15
     timeout-minutes: 180
@@ -101,9 +112,9 @@ jobs:
           # The run_id suffix makes the primary key unique so the save step
           # below always persists updated archives; restores match on the
           # prefixes and pick the newest entry.
-          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}-${{ github.run_id }}
           restore-keys: |
-            vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}-
             vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-
 
       - name: Install pinned MoltenVK iOS package
@@ -128,6 +139,7 @@ jobs:
           cmake -S . -B build-ios-upstream -G Xcode \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=arm64-ios \
+            -DVCPKG_OVERLAY_TRIPLETS="$PWD/ios/triplets" \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphoneos \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
@@ -136,7 +148,7 @@ jobs:
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
             -DVITA3K_BUILD_IOS_UPSTREAM_CORE=ON \
             -DVITA3K_BUILD_IOS=OFF \
-            -DVITA3K_IOS_DEPLOYMENT_TARGET=26.0 \
+            -DVITA3K_IOS_DEPLOYMENT_TARGET=16.0 \
             -DVITA3K_IOS_LINK_CORE=ON \
             -DVITA3K_IOS_MOLTENVK_LIBRARY="$VITA3K_IOS_MOLTENVK_LIBRARY" \
             -DVITA3K_IOS_MOLTENVK_INCLUDE_DIR="$VITA3K_IOS_MOLTENVK_INCLUDE_DIR" \
@@ -154,7 +166,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/vcpkg/archives
-          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          key: vcpkg-arm64-ios-77df67c-${{ env.XCODE_VER }}-${{ hashFiles('vcpkg.json', 'ios/triplets/*.cmake') }}-${{ github.run_id }}
 
       - name: Build unsigned upstream-core device application
         run: |
