@@ -472,15 +472,21 @@ bool VKState::create(std::unique_ptr<renderer::State> &state, const Config &conf
         }
 
 #ifdef __APPLE__
+#if !defined(VITA3K_PLATFORM_IOS)
+        // The older desktop MoltenVK package still needs this option. iOS
+        // 1.4.2 handles swizzling internally; this setting is obsolete/ignored.
         const VkBool32 full_image_swizzle = VK_TRUE;
+#endif
         const VkBool32 resume_lost_device = VK_TRUE;
 #ifndef NDEBUG
         const VkBool32 debug = VK_TRUE;
         const int32_t log_level = 4;
 #endif
         vk::LayerSettingEXT layer_settings[] = {
+#if !defined(VITA3K_PLATFORM_IOS)
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", vk::LayerSettingTypeEXT::eBool32, 1,
                 &full_image_swizzle },
+#endif
             { kMVKMoltenVKDriverLayerName, "MVK_CONFIG_RESUME_LOST_DEVICE", vk::LayerSettingTypeEXT::eBool32, 1,
                 &resume_lost_device },
 #ifndef NDEBUG

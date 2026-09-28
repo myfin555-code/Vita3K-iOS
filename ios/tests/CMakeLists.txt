@@ -18,3 +18,8 @@ target_include_directories(runtime_budget_tests PRIVATE ../../vita3k/cpu/include
 target_link_libraries(runtime_budget_tests PRIVATE Threads::Threads)
 add_test(NAME runtime_budget_tests COMMAND runtime_budget_tests)
 set_tests_properties(runtime_budget_tests PROPERTIES TIMEOUT 30)
+
+add_executable(pipeline_cache_data_tests PipelineCacheDataTests.cpp)
+target_compile_features(pipeline_cache_data_tests PRIVATE cxx_std_17)
+target_include_directories(pipeline_cache_data_tests PRIVATE ../../vita3k/renderer/include)
+add_test(NAME pipeline_cache_data_tests COMMAND pipeline_cache_data_tests)

@@ -1,0 +1,51 @@
+cmake_minimum_required(VERSION 3.22)
+include("${CMAKE_CURRENT_LIST_DIR}/../ios/cmake/MoltenVKVersion.cmake")
+
+# Usage: cmake [-DMVK_PACKAGE=simulator] [-DMVK_DEPS_DIR=...] -P this-file
+if(NOT DEFINED MVK_DEPS_DIR)
+    get_filename_component(MVK_DEPS_DIR "${CMAKE_CURRENT_LIST_DIR}/../build-deps" ABSOLUTE)
+endif()
+if(NOT DEFINED MVK_PACKAGE OR MVK_PACKAGE STREQUAL "ios")
+    set(asset "MoltenVK-ios.tar")
+    set(digest "${VITA3K_MOLTENVK_IOS_SHA256}")
+    set(destination "${MVK_DEPS_DIR}/moltenvk")
+    set(slice "ios-arm64")
+elseif(MVK_PACKAGE STREQUAL "simulator")
+    set(asset "MoltenVK-all.tar")
+    set(digest "${VITA3K_MOLTENVK_ALL_SHA256}")
+    set(destination "${MVK_DEPS_DIR}/moltenvk-all")
+    set(slice "ios-arm64_x86_64-simulator")
+else()
+    message(FATAL_ERROR "MVK_PACKAGE must be ios or simulator")
+endif()
+
+file(MAKE_DIRECTORY "${MVK_DEPS_DIR}")
+# Keep device/simulator installs separate, including concurrent local runs.
+file(LOCK "${destination}.lock" GUARD PROCESS TIMEOUT 300)
+set(archive "${MVK_DEPS_DIR}/${VITA3K_MOLTENVK_VERSION}-${asset}")
+set(actual_digest "")
+if(EXISTS "${archive}")
+    file(SHA256 "${archive}" actual_digest)
+endif()
+if(NOT actual_digest STREQUAL digest)
+    set(url "https://github.com/KhronosGroup/MoltenVK/releases/download/v${VITA3K_MOLTENVK_VERSION}/${asset}")
+    file(DOWNLOAD "${url}" "${archive}.download"
+        EXPECTED_HASH "SHA256=${digest}" TLS_VERIFY ON
+        TIMEOUT 180 INACTIVITY_TIMEOUT 30 SHOW_PROGRESS)
+    file(RENAME "${archive}.download" "${archive}")
+endif()
+
+# Validate in staging before replacing the previous installed version.
+set(staging "${destination}.staging")
+file(REMOVE_RECURSE "${staging}")
+file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${staging}")
+set(root "${staging}/MoltenVK/MoltenVK")
+if(NOT EXISTS "${root}/static/MoltenVK.xcframework/${slice}/libMoltenVK.a"
+    OR NOT EXISTS "${root}/include/MoltenVK/mvk_vulkan.h")
+    message(FATAL_ERROR "MoltenVK ${VITA3K_MOLTENVK_VERSION} package is missing the ${slice} library or headers")
+endif()
+set(VITA3K_IOS_MOLTENVK_INCLUDE_DIR "${root}/include")
+include("${CMAKE_CURRENT_LIST_DIR}/../ios/cmake/ValidateMoltenVK.cmake")
+file(REMOVE_RECURSE "${destination}")
+file(RENAME "${staging}" "${destination}")
+message(STATUS "Installed MoltenVK ${VITA3K_MOLTENVK_VERSION} (${slice}) at ${destination}")

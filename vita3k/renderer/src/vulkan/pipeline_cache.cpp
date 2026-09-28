@@ -16,6 +16,7 @@
 // 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 #include <renderer/vulkan/pipeline_cache.h>
+#include <renderer/vulkan/pipeline_cache_data.h>
 
 #include <renderer/vulkan/gxm_to_vulkan.h>
 #include <renderer/vulkan/state.h>
@@ -298,7 +299,10 @@ void PipelineCache::read_pipeline_cache() {
     LOG_INFO("Found pipeline cache, reading...");
 
     pipeline_cache_file.seekg(0, fs::ifstream::end);
-    size_t pipeline_size = pipeline_cache_file.tellg();
+    const auto file_size = pipeline_cache_file.tellg();
+    if (file_size < 0)
+        return;
+    size_t pipeline_size = static_cast<size_t>(file_size);
     pipeline_cache_file.seekg(0);
 
     if (pipeline_size < sizeof(uint32_t) + sizeof(size_t))
@@ -312,24 +316,24 @@ void PipelineCache::read_pipeline_cache() {
     read_integer(magic_number);
     size_t nb_hashes;
     read_integer(nb_hashes);
-    // safety check
-    size_t hashes_size = sizeof(magic_number) + sizeof(nb_hashes) + nb_hashes * sizeof(uint64_t);
-    if (magic_number != pipeline_cache_magic || pipeline_size < hashes_size) {
+    // Check with division before multiplying an untrusted on-disk count.
+    const size_t prefix_size = sizeof(magic_number) + sizeof(nb_hashes);
+    if (!pipeline_cache_file || magic_number != pipeline_cache_magic
+        || nb_hashes > (pipeline_size - prefix_size) / sizeof(uint64_t)) {
         LOG_WARN("Pipeline cache is corrupted, ignoring it.");
-        pipeline_cache_file.close();
         return;
     }
-    pipeline_size -= hashes_size;
+    pipeline_size -= prefix_size + nb_hashes * sizeof(uint64_t);
 
-    // insert hashes with null pipeline
-    for (size_t i = 0; i < nb_hashes; i++) {
-        uint64_t hash;
-        read_integer(hash);
-        pipelines[hash] = nullptr;
-    }
-
+    std::vector<uint64_t> hashes(nb_hashes);
+    pipeline_cache_file.read(reinterpret_cast<char *>(hashes.data()), nb_hashes * sizeof(uint64_t));
     std::vector<char> pipeline_data(pipeline_size);
     pipeline_cache_file.read(pipeline_data.data(), pipeline_size);
+    const auto &gpu = state.physical_device_properties;
+    if (!pipeline_cache_file || !compatible_pipeline_cache(pipeline_data.data(), pipeline_data.size(), gpu.vendorID, gpu.deviceID, gpu.pipelineCacheUUID.data())) {
+        LOG_INFO("Pipeline cache is incompatible with this GPU/driver or truncated; rebuilding it.");
+        return;
+    }
     pipeline_cache_file.close();
 
     vk::PipelineCacheCreateInfo cache_info{
@@ -337,8 +341,17 @@ void PipelineCache::read_pipeline_cache() {
         .pInitialData = pipeline_data.data()
     };
 
-    state.device.destroyPipelineCache(pipeline_cache);
-    pipeline_cache = state.device.createPipelineCache(cache_info);
+    // Keep the empty cache usable if the driver rejects the saved payload.
+    try {
+        const auto loaded_cache = state.device.createPipelineCache(cache_info);
+        state.device.destroyPipelineCache(pipeline_cache);
+        pipeline_cache = loaded_cache;
+    } catch (const vk::SystemError &error) {
+        LOG_WARN("Pipeline cache rejected by driver, rebuilding: {}", error.what());
+        return;
+    }
+    for (const auto hash : hashes)
+        pipelines[hash] = nullptr;
     LOG_INFO("Pipeline cache read and loaded");
 }
 

@@ -1,0 +1,4 @@
+# Official release assets. Shared by CI, local generators, and the header gate.
+set(VITA3K_MOLTENVK_VERSION "1.4.2")
+set(VITA3K_MOLTENVK_IOS_SHA256 "b5d947b1660e6e9fed40b9cd2387e160aaab9e80b775c0cef7e14059405178c1")
+set(VITA3K_MOLTENVK_ALL_SHA256 "562a15a29bc358446a56a4091c5f7e08f604184187c1d34f712148b61ef17276")
