@@ -27,6 +27,7 @@ struct JITSettingsView: View {
             Section("Enable JIT") {
                 Picker("Method", selection: $method) {
                     Text("External debugger / JIT tool").tag("external")
+                    Text("TrollStore").tag("trollstore")
                     if supportsStikDebug { Text("StikDebug").tag("stikdebug") }
                 }
                 Button("Prepare JIT") { prepare() }
@@ -49,9 +50,11 @@ struct JITSettingsView: View {
                     Link("Jitterbug setup", destination: URL(string: "https://github.com/osy/Jitterbug")!)
                 }
                 Link("AltJIT instructions", destination: URL(string: "https://faq.altstore.io/altstore-classic/enabling-jit/altjit")!)
+                Text("TrollStore 2.0.12 or later: install this app through TrollStore, select TrollStore above, then tap Prepare JIT. Supported versions for this app are iOS 16.0–16.6.1, 16.7 RC (20H18), and 17.0. TrollStore does not support iOS 17.0.1+, 18 or 26.")
+                Link("TrollStore setup and JIT support", destination: URL(string: "https://github.com/opa334/TrollStore#url-scheme")!)
                 Text("Installations that already permit executable memory, including compatible TrollStore or jailbreak setups, are detected automatically. No debugger is required when allocation and protection checks succeed.")
                 if getenv("LC_HOME_PATH") != nil {
-                    Text("LiveContainer: enable Use LiveContainer’s Bundle ID in its settings before requesting StikDebug.")
+                    Text("LiveContainer: enable Use LiveContainer’s Bundle ID in its settings before requesting JIT through TrollStore or StikDebug.")
                 }
             }
         }
@@ -62,6 +65,26 @@ struct JITSettingsView: View {
     }
 
     private func prepare() {
+        // TrollStore's privileged helper attaches to the installed app itself;
+        // the external debugger entitlement check does not apply to this route.
+        if method == "trollstore" {
+            guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else {
+                message = "TrollStore requires a valid bundle identifier."
+                return
+            }
+            var components = URLComponents()
+            components.scheme = "apple-magnifier"
+            components.host = "enable-jit"
+            components.queryItems = [URLQueryItem(name: "bundle-id", value: bundleID)]
+            guard let url = components.url else { return }
+            UIApplication.shared.open(url) { opened in
+                // Magnifier also handles this scheme on installations without
+                // TrollStore. Only the core's memory probe can confirm success.
+                message = opened ? "Return to Tsubomi after TrollStore enables JIT. If Magnifier opens, install TrollStore 2.0.12 or later on a supported iOS version."
+                                 : "Could not open TrollStore. Install TrollStore 2.0.12 or later and install this app through it."
+            }
+            return
+        }
         guard TsubomiJITBridge.hasDebugEntitlement() else {
             message = "This installation lacks get-task-allow. Re-sign it with a compatible sideloading tool to use a debugger."
             return

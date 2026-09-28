@@ -7,8 +7,7 @@ Build the upstream core with **Xcode 26 / iOS 26 SDK**, targeting **iOS 16.0**.
 is shared by the application and core. The `ios/triplets/arm64-ios.cmake`
 vcpkg overlay builds dependencies for iOS 16.0 as well. Configure with
 `-DVCPKG_OVERLAY_TRIPLETS="$PWD/ios/triplets"` and
-`-DVITA3K_IOS_DEPLOYMENT_TARGET=16.0`. The existing GitHub workflows still
-explicitly target iOS 26 until the separately supplied workflow patch is applied.
+`-DVITA3K_IOS_DEPLOYMENT_TARGET=16.0`. The GitHub workflows target iOS 16.0.
 The SDK version is deliberately newer than the minimum deployment version.
 
 The frontend uses `ObservableObject`/`Published` on all supported systems.
@@ -27,14 +26,24 @@ Open **Settings → JIT**, or tap the JIT banner. Choose one acquisition method:
 
 - **External debugger / JIT tool**: enable JIT for the displayed bundle ID/PID
   with a compatible external tool and return to Tsubomi.
+- **TrollStore** (2.0.12+): install this app through TrollStore, select
+  **TrollStore**, and tap **Prepare JIT**. This opens the official
+  `apple-magnifier://enable-jit?bundle-id=…` URL. TrollStore's privileged helper
+  attaches to the running app and detaches; return to Tsubomi for its memory
+  probe to confirm readiness. Within this app's iOS 16+ range, TrollStore supports
+  16.0–16.6.1, 16.7 RC (20H18), and 17.0, not 16.7 releases or 17.0.1/18/26.
+  Without TrollStore, the same URL may open Apple's Magnifier; this is not JIT
+  success. Re-enable JIT after each process restart.
 - **StikDebug** (iOS 17.4+): **Prepare JIT** opens the documented
   `stikdebug://enable-jit` request with the running PID and bundle ID. On iOS 26
   the request includes the allocator's fixed `universal.js` script. Pairing,
   VPN and Developer Mode must already be configured in StikDebug.
 
-The app checks its `get-task-allow` code-signing flag before requesting a
-debugger. Sideloading must preserve this entitlement; changing an unsigned
-IPA's plist does not grant it. Opening a helper URL never marks JIT ready.
+The app checks its `get-task-allow` code-signing flag for external debugger
+and StikDebug requests. Sideloading must preserve this entitlement; changing an
+unsigned IPA's plist does not grant it. TrollStore uses its own privileged helper
+and bypasses this local entitlement check. Opening any helper URL never marks
+JIT ready. No additional private entitlements are added to the IPA.
 
 | System / installation | Memory path and applicable acquisition tools |
 | --- | --- |
@@ -46,7 +55,7 @@ IPA's plist does not grant it. Opening a helper URL never marks JIT ready.
 
 No single acquisition tool works on every release. Tools above grant the same
 process capabilities, so the app does not need a separate allocator for each.
-This change integrates external acquisition and StikDebug URL launching; it
+This change integrates external acquisition, TrollStore and StikDebug URL launching; it
 **does not embed StikJIT**, import pairing secrets, install a VPN, or add an
 app extension. Built-in StikJIT requires a separately signed helper process.
 LiveContainer users must enable **Use LiveContainer's Bundle ID** in its settings.
@@ -66,6 +75,8 @@ References checked during implementation:
 - [SideJITServer supported platforms](https://github.com/stossy11/SideJITServer)
 - [Jitterbug pairing and debugger launch](https://github.com/osy/Jitterbug)
 - [AltJIT instructions](https://faq.altstore.io/altstore-classic/enabling-jit/altjit)
+- [TrollStore supported versions and JIT URL](https://github.com/opa334/TrollStore#url-scheme)
+- [TrollStore helper attach/detach implementation](https://github.com/opa334/TrollStore/blob/main/RootHelper/jit.m)
 
 ## Native game keyboard
 
@@ -101,8 +112,7 @@ cmake --build build-native-tests
 ctest --test-dir build-native-tests --output-on-failure
 ```
 
-Run those tests before the Xcode build. The separately supplied workflow patch
-adds them to the upstream IPA workflow and lowers its deployment target to iOS 16.
+The upstream IPA workflow runs these tests before the Xcode build and targets iOS 16.
 Linux cannot compile UIKit/SwiftUI or validate device JIT. Before release, run:
 
 1. Install the IPA on iOS 16, 17, 18 and 26; inspect onboarding, library,
@@ -117,6 +127,10 @@ Linux cannot compile UIKit/SwiftUI or validate device JIT. Before release, run:
 5. Test repeated Enter in a game that keeps SceIme open, game-driven text/caret
    changes, game abort while composing, background/foreground, and game exit
    while the keyboard is shown. Noncancelable dialogs must ignore Cancel.
+6. On a supported TrollStore device, install the IPA through TrollStore 2.0.12+,
+   request JIT from Settings, return, launch and switch games. Restart the app
+   and request JIT again. With TrollStore absent or its request rejected, verify
+   opening Magnifier does not clear the JIT banner or enable game launch.
 
 Physical-device and Xcode results are pending; portable tests alone do not
 establish that all JIT tools or games work on all four OS families.
