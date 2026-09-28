@@ -24,6 +24,8 @@ VCPKG_ROOT="${VCPKG_ROOT:-$REPO_ROOT/build-deps/vcpkg}"
 MVK_ALL="$REPO_ROOT/build-deps/moltenvk-all/MoltenVK/MoltenVK"
 PYTHON3="${PYTHON3:-/usr/local/bin/python3.13}"
 
+cmake -DMVK_PACKAGE=simulator -P "$REPO_ROOT/.ci/install-moltenvk.cmake"
+
 cmake -S . -B build-ios-upstream-sim -G Xcode \
   -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
   -DVCPKG_OVERLAY_TRIPLETS="$REPO_ROOT/ios/triplets" \
@@ -37,7 +39,7 @@ cmake -S . -B build-ios-upstream-sim -G Xcode \
   -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
   -DVITA3K_BUILD_IOS_UPSTREAM_CORE=ON \
   -DVITA3K_BUILD_IOS=OFF \
-  -DVITA3K_IOS_DEPLOYMENT_TARGET=26.0 \
+  -DVITA3K_IOS_DEPLOYMENT_TARGET=16.0 \
   -DVITA3K_IOS_LINK_CORE=ON \
   -DVITA3K_IOS_MOLTENVK_LIBRARY="$MVK_ALL/static/MoltenVK.xcframework/ios-arm64_x86_64-simulator/libMoltenVK.a" \
   -DVITA3K_IOS_MOLTENVK_INCLUDE_DIR="$MVK_ALL/include" \
