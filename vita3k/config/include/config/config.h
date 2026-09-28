@@ -168,6 +168,8 @@ using PhysicalKeyCode = input::PhysicalKeyCode;
     code(int, "sys-lang", static_cast<int>(SCE_SYSTEM_PARAM_LANG_ENGLISH_US), sys_lang)                 \
     code(int, "sys-date-format", (int)SCE_SYSTEM_PARAM_DATE_FORMAT_MMDDYYYY, sys_date_format)           \
     code(int, "sys-time-format", (int)SCE_SYSTEM_PARAM_TIME_FORMAT_12HOUR, sys_time_format)             \
+    code(int, "ios-jit-threads", 37, ios_jit_threads) \
+    code(int, "ios-emulator-ram-mb", 640, ios_emulator_ram_mb) \
     code(int, "ios-jit-cache-mb", 16, ios_jit_cache_mb)                                                  \
     code(int, "cpu-pool-size", 10, cpu_pool_size)                                                       \
     code(int, "modules-mode", static_cast<int>(ModulesMode::AUTOMATIC), modules_mode)                   \

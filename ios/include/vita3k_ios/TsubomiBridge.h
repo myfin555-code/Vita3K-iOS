@@ -27,6 +27,8 @@ NS_SWIFT_NAME(EmulatorSettings)
 @property(nonatomic) NSInteger modulesMode;
 @property(nonatomic) NSInteger audioVolume;
 @property(nonatomic) BOOL textureCache;
+@property(nonatomic) NSInteger jitThreads;
+@property(nonatomic) NSInteger emulatorRAMMB;
 @property(nonatomic) NSInteger jitCacheMB;
 @property(nonatomic, copy) NSArray<NSString *> *lleModules;
 @property(nonatomic, copy) NSArray<NSString *> *availableModules;

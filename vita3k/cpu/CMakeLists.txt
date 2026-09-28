@@ -2,6 +2,8 @@ set(SOURCE_LIST
 include/cpu/state.h
 include/cpu/common.h
 include/cpu/functions.h
+include/cpu/slot_pool.h
+include/cpu/impl/pooled_cpu.h
 include/cpu/impl/dynarmic_cpu.h
 include/cpu/impl/interface.h
 include/cpu/disasm/functions.h
@@ -10,6 +12,7 @@ include/cpu/disasm/state.h
 src/disasm.cpp
 src/cpu.cpp
 src/dynarmic_cpu.cpp
+src/pooled_cpu.cpp
 )
 
 add_library(

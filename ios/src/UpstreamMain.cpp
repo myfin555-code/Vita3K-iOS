@@ -36,6 +36,7 @@
 #include <config/state.h>
 #include <config/version.h>
 #include <cpu/functions.h>
+#include <cpu/impl/pooled_cpu.h>
 #include <ctrl/functions.h>
 #include <ctrl/state.h>
 #include <display/state.h>
@@ -539,6 +540,10 @@ bool initialize_session(const fs::path &storage_path, Root &root_paths,
             return false;
         }
 
+        cfg.ios_jit_threads = std::clamp(cfg.ios_jit_threads, 1, 64);
+        cfg.ios_emulator_ram_mb = std::clamp(cfg.ios_emulator_ram_mb, 512, 2048);
+        set_ios_jit_threads(cfg.ios_jit_threads);
+        set_ios_guest_memory_limit(static_cast<uint64_t>(cfg.ios_emulator_ram_mb) * 1024 * 1024);
         cfg.ios_jit_cache_mb = std::clamp(cfg.ios_jit_cache_mb, 16, 128);
         set_ios_jit_cache_size(static_cast<std::size_t>(cfg.ios_jit_cache_mb) * 1024 * 1024);
 
@@ -715,6 +720,8 @@ Vita3KIOSSettings native_settings(EmuEnvState &emuenv) {
         .modules_mode = current.modules_mode,
         .audio_volume = current.audio_volume,
         .texture_cache = current.texture_cache,
+        .jit_threads = emuenv.cfg.ios_jit_threads,
+        .emulator_ram_mb = emuenv.cfg.ios_emulator_ram_mb,
         .jit_cache_mb = emuenv.cfg.ios_jit_cache_mb,
         .lle_modules = current.lle_modules,
         .available_modules = std::move(available_modules),
@@ -2278,6 +2285,8 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     desired.lle_modules = settings.lle_modules;
     desired.audio_volume = std::clamp(settings.audio_volume, 0, 100);
     desired.texture_cache = settings.texture_cache;
+    desired.ios_jit_threads = std::clamp(settings.jit_threads, 1, 64);
+    desired.ios_emulator_ram_mb = std::clamp(settings.emulator_ram_mb, 512, 2048);
     desired.ios_jit_cache_mb = std::clamp(settings.jit_cache_mb, 16, 128);
     desired.ngs_enable = settings.ngs_enable;
     desired.async_pipeline_compilation = settings.async_pipeline_compilation;
@@ -2295,7 +2304,9 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
         desired.controller_binds[SDL_GAMEPAD_BUTTON_NORTH] = face_button_physical_for_slot(settings.bind_triangle);
     }
 
-    const bool jit_cache_changed = desired.ios_jit_cache_mb != emuenv.cfg.ios_jit_cache_mb;
+    const bool jit_cache_changed = desired.ios_jit_cache_mb != emuenv.cfg.ios_jit_cache_mb
+        || desired.ios_jit_threads != emuenv.cfg.ios_jit_threads
+        || desired.ios_emulator_ram_mb != emuenv.cfg.ios_emulator_ram_mb;
     const auto result = app::commit_settings(emuenv, desired);
     emuenv.display.fps_hack = false;
     emuenv.display.fps_limit.store(60, std::memory_order_relaxed);
@@ -2304,7 +2315,7 @@ void apply_native_settings(EmuEnvState &emuenv, const Vita3KIOSSettings &setting
     for (const auto setting : result.restart_required_settings)
         restart_required.push_back(restart_setting_name(setting));
     if (jit_cache_changed)
-        restart_required.push_back("JIT cache (restart the app)");
+        restart_required.push_back("JIT threads / memory (restart the app)");
     vita3k_ios_report_settings_result(restart_required);
     LOG_INFO("iOS settings saved: runtime_applied={} restart_required={}",
         result.runtime_settings_applied, restart_required.size());
@@ -2669,11 +2680,6 @@ bool has_physical_controller(CtrlState &state) {
     });
 }
 
-// Gravity Rush runs ~24 concurrently-live guest threads; exited-but-undeleted
-// threads now release their region when they park dormant, but keep headroom
-// for thread churn (audio/savedata workers) on top of the live set.
-constexpr std::size_t IOS_JIT_POOL_TARGET = 32;
-
 bool prepare_ios_jit_pool() {
     if (g_jit_pool_ready.load(std::memory_order_relaxed))
         return true;
@@ -2693,12 +2699,13 @@ bool prepare_ios_jit_pool() {
     if (!vita3k_ios_supports_universal_jit() || !ios_debugger_attached())
         return false;
 
+    const std::size_t target_count = get_ios_jit_threads();
     g_unhandled_universal_jit_breakpoint.store(false, std::memory_order_relaxed);
     try {
-        const std::size_t warmed_jit_regions = prewarm_ios_jit_code_cache_pool(IOS_JIT_POOL_TARGET, get_ios_jit_cache_size());
-        if (warmed_jit_regions < IOS_JIT_POOL_TARGET) {
+        const std::size_t warmed_jit_regions = prewarm_ios_jit_code_cache_pool(target_count, get_ios_jit_cache_size());
+        if (warmed_jit_regions < target_count) {
             LOG_CRITICAL("iOS JIT region pool is under target: target={} available={}",
-                IOS_JIT_POOL_TARGET, warmed_jit_regions);
+                target_count, warmed_jit_regions);
             if (auto logger = spdlog::default_logger())
                 logger->flush();
             return false;

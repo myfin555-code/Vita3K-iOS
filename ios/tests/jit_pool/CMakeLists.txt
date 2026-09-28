@@ -1,0 +1,29 @@
+cmake_minimum_required(VERSION 3.22)
+project(PooledJitIntegration LANGUAGES C CXX ASM)
+# The host suite validates the iOS scheduler on x86_64; it does not emulate
+# Apple's executable-memory permissions or the ARM64 universal allocator.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    message(FATAL_ERROR "This host integration suite requires x86_64 Linux")
+endif()
+get_filename_component(repo "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+set(DYNARMIC_FRONTENDS A32 CACHE STRING "" FORCE)
+set(DYNARMIC_TESTS OFF CACHE BOOL "" FORCE)
+set(DYNARMIC_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+set(DYNARMIC_USE_BUNDLED_EXTERNALS ON CACHE BOOL "" FORCE)
+add_subdirectory(${repo}/external/dynarmic dynarmic)
+find_package(Threads REQUIRED)
+add_executable(pool_test ${CMAKE_CURRENT_LIST_DIR}/PooledJitTests.cpp
+ ${repo}/vita3k/cpu/src/cpu.cpp ${repo}/vita3k/cpu/src/dynarmic_cpu.cpp ${repo}/vita3k/cpu/src/pooled_cpu.cpp
+ ${repo}/vita3k/mem/src/mem.cpp ${repo}/vita3k/mem/src/allocator.cpp)
+target_compile_features(pool_test PRIVATE cxx_std_20)
+target_compile_definitions(pool_test PRIVATE VITA3K_PLATFORM_IOS=1)
+target_include_directories(pool_test PRIVATE ${CMAKE_CURRENT_LIST_DIR}/support ${repo}/vita3k/cpu/include ${repo}/vita3k/mem/include ${repo}/vita3k/util/include)
+target_link_libraries(pool_test PRIVATE dynarmic merry::mcl fmt::fmt Threads::Threads)
+
+enable_testing()
+foreach(slots IN ITEMS 1 3 37)
+    add_test(NAME jit_pool_${slots} COMMAND pool_test ${slots} 16)
+    set_tests_properties(jit_pool_${slots} PROPERTIES TIMEOUT 30)
+endforeach()
+add_test(NAME jit_pool_1_128mb COMMAND pool_test 1 128)
+set_tests_properties(jit_pool_1_128mb PROPERTIES TIMEOUT 30)

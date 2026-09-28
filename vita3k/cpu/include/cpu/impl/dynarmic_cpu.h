@@ -44,6 +44,7 @@ class DynarmicCPU : public CPUInterface {
     bool log_mem = false;
     bool log_code = false;
     bool cpu_opt;
+    bool time_sliced = false;
 
     // Architectural state kept while `jit` is released (dormant thread or
     // not-yet-started thread). Accessors read/write this instead of the jit
@@ -54,7 +55,13 @@ class DynarmicCPU : public CPUInterface {
     void ensure_jit();
 
 public:
-    DynarmicCPU(CPUState *state, std::size_t processor_id, bool cpu_opt);
+    DynarmicCPU(CPUState *state, std::size_t processor_id, bool cpu_opt, bool time_sliced = false);
+    // Only rebind an idle, exclusively leased worker. Emitted callbacks/CP15
+    // addresses stay stable; their values follow the current guest thread.
+    void rebind(CPUState *state);
+    void clear_translation_cache();
+    std::array<uint32_t, 3> save_cp15() const;
+    void load_cp15(const std::array<uint32_t, 3> &values);
     ~DynarmicCPU() override;
     int run() override;
     void stop() override;

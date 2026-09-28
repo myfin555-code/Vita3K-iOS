@@ -63,7 +63,8 @@ LiveContainer users must enable **Use LiveContainer's Bundle ID** in its setting
 For conventional JIT, readiness requires a successful RWX allocation and
 RX → RW → RX transitions. The app permits debugger detachment after permission
 is granted. The iOS 26 universal path requires a traced process while all
-32 regions of the configured cache size are prepared, then sends the universal detach request.
+the configured number of cache regions are prepared (37 by default), then sends
+the universal detach request.
 The pool is reused across games; exhaustion without an attached script fails
 allocation rather than issuing an unhandled breakpoint. Restarting the app
 requires acquiring JIT again. The banner only clears after preparation succeeds.
@@ -147,19 +148,50 @@ Settings now expose these core options globally and per game:
   `ModulesMode` values. Selections come from installed `vs0/sys/external/*.suprx`.
   Changes take effect on the next launch, with the running game's module policy
   preserved until restart.
-- CPU core: Dynarmic with safe optimizations enabled or disabled. This build
-  contains only Dynarmic; this selector does not change the number of physical
-  CPU cores or expose an unimplemented interpreter. `cpu-pool-size` in upstream
-  config is unused by the current kernel and is not exposed as a working option.
 - Audio volume (0–100%) and texture upload reuse. Disabling Texture cache
   forces Vulkan texture uploads even when the texture hash is unchanged.
 
-The global **JIT cache (MB)** field accepts whole numbers from 16 to 128.
-It is persisted as `ios-jit-cache-mb`, applied only at process startup, and
-used by both Dynarmic and the iOS 26 universal prewarm pool. A full app restart
-is required. MB here means 1,048,576 bytes **per guest thread**, not a total
-memory budget. The default remains 16; 128 can require several GB with many
-threads and is unsuitable for memory-constrained devices.
+### JIT threads and memory
+
+Global settings accept whole numbers and require a full app restart:
+
+| Setting | Range | Default | Config key |
+| --- | --- | --- | --- |
+| JIT threads | 1–64 | 37 | `ios-jit-threads` |
+| JIT RAM per thread (MB) | 16–128 | 16 | `ios-jit-cache-mb` |
+| Emulated RAM budget (MB) | 512–2048 | 640 | `ios-emulator-ram-mb` |
+
+The supplied Attack on Titan log ends with **37 live guest threads** (1 running,
+36 waiting). Its 191 cache-allocation events are cumulative, covering 190 guest
+IDs; every recorded allocation is 16 MB. These observations determine the
+37 × 16 defaults, not a claim of 37 simultaneously executing host cores. The
+CPU core selector has been removed; existing optimization preferences persist.
+
+Guest threads now share a bounded pool of reusable Dynarmic engines. Each guest
+keeps its own ARM/VFP registers and CP15 state. A slot is released at a syscall
+or after a bounded instruction slice, before dispatching any blocking HLE work.
+Cache invalidation reaches every slot. Thus **1 × 128 MB** permits one engine
+and one 128 MB executable cache, without removing guest threads. It can reduce
+parallelism; increasing either field does not guarantee better performance.
+Conventional JIT allocates used slots lazily; universal JIT prewarms the selected
+number before debugger detach. Increasing the pool/cache can exceed device RAM.
+
+MB means 1,048,576 bytes. The 640 MB guest allocation budget uses the requested
+512 + 128 total. It limits committed guest allocations separately from JIT,
+returns capacity on free, and rejects requests beyond the limit. Following the
+Vita3K-Plus allocator, the emulator still reserves its **4 GB virtual address
+space** and commits pages on demand; reserving addresses does not consume 4 GB
+of physical RAM. This is not a process memory cap or two physical Vita RAM banks:
+GPU textures/staging, JIT metadata, writable aliases and app overhead are extra.
+`MAP_JIT` alone does not grant executable-memory permission on iOS; the existing
+verified conventional/universal acquisition paths remain necessary.
+
+Portable regression tests live under `ios/tests`. An optional host integration
+suite under `ios/tests/jit_pool` builds the actual CPU and memory sources with
+Dynarmic and the iOS pool enabled; only logging/disassembly are adapted. It
+requires populated Dynarmic submodules and Boost headers. Run CMake configure,
+build and CTest for that directory. This does not validate Apple ARM64 memory
+permissions, SwiftUI, GPU performance, or game compatibility on an iPhone.
 
 ## Movie skip crash investigation
 

@@ -19,6 +19,7 @@
 #include <cpu/functions.h>
 #include <cpu/impl/dynarmic_cpu.h>
 #include <cpu/impl/interface.h>
+#include <cpu/impl/pooled_cpu.h>
 #include <cpu/state.h>
 #include <mem/ptr.h>
 #include <util/log.h>
@@ -49,7 +50,11 @@ CPUStatePtr init_cpu(bool cpu_opt, SceUID thread_id, std::size_t processor_id, M
     }
 
     try {
+#if defined(VITA3K_PLATFORM_IOS)
+        state->cpu = make_ios_pooled_cpu(state.get(), processor_id, cpu_opt);
+#else
         state->cpu = std::make_unique<DynarmicCPU>(state.get(), processor_id, cpu_opt);
+#endif
     } catch (const std::exception &e) {
         // On iOS the JIT code region can legitimately be unavailable (pool
         // exhausted after the debugger detached). Fail the thread creation
@@ -71,6 +76,10 @@ int step(CPUState &state) {
 
 void stop(CPUState &state) {
     state.cpu->stop();
+}
+
+void stop_from_signal(CPUState &state) {
+    state.cpu->stop_from_signal();
 }
 
 uint32_t read_reg(CPUState &state, size_t index) {

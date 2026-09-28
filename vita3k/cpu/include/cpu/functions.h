@@ -30,6 +30,7 @@ CPUStatePtr init_cpu(bool cpu_opt, SceUID thread_id, std::size_t processor_id, M
 int run(CPUState &state);
 int step(CPUState &state);
 void stop(CPUState &state);
+void stop_from_signal(CPUState &state);
 void set_thread_id(CPUState &state, SceUID thread_id);
 SceUID get_thread_id(CPUState &state);
 uint32_t read_reg(CPUState &state, size_t index);

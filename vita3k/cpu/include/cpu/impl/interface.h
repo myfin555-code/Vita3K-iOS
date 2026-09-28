@@ -27,6 +27,8 @@ struct CPUInterface {
 
     virtual int run() = 0;
     virtual void stop() = 0;
+    // Fault handler on the executing host thread: no locks or wakeups.
+    virtual void stop_from_signal() { stop(); }
 
     virtual uint32_t get_reg(uint8_t idx) = 0;
     virtual void set_reg(uint8_t idx, uint32_t val) = 0;

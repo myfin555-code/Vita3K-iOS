@@ -59,6 +59,8 @@ struct Vita3KIOSSettings {
     int modules_mode = 0;
     int audio_volume = 100;
     bool texture_cache = true;
+    int jit_threads = 37;
+    int emulator_ram_mb = 640;
     int jit_cache_mb = 16;
     std::vector<std::string> lle_modules;
     std::vector<std::string> available_modules;

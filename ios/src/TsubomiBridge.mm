@@ -203,6 +203,8 @@ NSString *trophy_grade_name(int grade) {
     _modulesMode = core.modules_mode;
     _audioVolume = core.audio_volume;
     _textureCache = core.texture_cache;
+    _jitThreads = core.jit_threads;
+    _emulatorRAMMB = core.emulator_ram_mb;
     _jitCacheMB = core.jit_cache_mb;
     NSMutableArray<NSString *> *lleModules = [NSMutableArray array];
     for (const auto &name : core.lle_modules)
@@ -245,6 +247,8 @@ NSString *trophy_grade_name(int grade) {
     core.modules_mode = static_cast<int>(self.modulesMode);
     core.audio_volume = static_cast<int>(self.audioVolume);
     core.texture_cache = self.textureCache;
+    core.jit_threads = static_cast<int>(self.jitThreads);
+    core.emulator_ram_mb = static_cast<int>(self.emulatorRAMMB);
     core.jit_cache_mb = static_cast<int>(self.jitCacheMB);
     for (NSString *name in self.lleModules)
         core.lle_modules.push_back(to_std(name));

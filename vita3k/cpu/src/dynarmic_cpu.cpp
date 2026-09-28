@@ -175,6 +175,13 @@ public:
         this->tpidruro = tpidruro;
     }
 
+    std::array<uint32_t, 3> save() const { return { tpidruro, sctlr, dacr }; }
+    void load(const std::array<uint32_t, 3> &values) {
+        tpidruro = values[0];
+        sctlr = values[1];
+        dacr = values[2];
+    }
+
     uint32_t get_tpidruro() const {
         return tpidruro;
     }
@@ -185,6 +192,7 @@ class ArmDynarmicCallback : public Dynarmic::A32::UserCallbacks {
 
     CPUState *parent;
     DynarmicCPU *cpu;
+    uint64_t ticks_remaining = 0;
 
 public:
     explicit ArmDynarmicCallback(CPUState &parent, DynarmicCPU &cpu)
@@ -381,10 +389,12 @@ public:
         cpu->jit->HaltExecution(Dynarmic::HaltReason::UserDefined8);
     }
 
-    void AddTicks(uint64_t ticks) override {}
+    void AddTicks(uint64_t ticks) override {
+        ticks_remaining = ticks >= ticks_remaining ? 0 : ticks_remaining - ticks;
+    }
 
     uint64_t GetTicksRemaining() override {
-        return 1ull << 60;
+        return cpu->time_sliced ? ticks_remaining : 1ull << 60;
     }
 };
 
@@ -393,11 +403,9 @@ Dynarmic::ExclusiveMonitor DynarmicCPU::shared_monitor(MAX_CORE_COUNT);
 std::unique_ptr<Dynarmic::A32::Jit> DynarmicCPU::make_jit() {
     Dynarmic::A32::UserConfig config{};
 #if defined(VITA3K_PLATFORM_IOS)
-    // Vita3K owns one Dynarmic JIT per guest thread. On iOS 26+, each cache
-    // also has a same-sized writable vm_remap alias, so Dynarmic's 128 MiB
-    // default scales poorly during middleware worker-thread bursts. Sixteen
-    // MiB remains above Dynarmic's documented approximate 8 MiB minimum; the
-    // backend clears the cache when it approaches capacity.
+    // One reusable executable cache per iOS execution slot. Sixteen MiB is
+    // above Dynarmic's approximate 8 MiB minimum; a full cache is recycled.
+    // The universal path also maps a same-sized writable alias.
     config.code_cache_size = get_ios_jit_cache_size();
 #endif
     config.arch_version = Dynarmic::A32::ArchVersion::v7;
@@ -413,7 +421,7 @@ std::unique_ptr<Dynarmic::A32::Jit> DynarmicCPU::make_jit() {
     config.coprocessors[15] = cp15;
     config.processor_id = core_id;
     config.optimizations = cpu_opt ? Dynarmic::all_safe_optimizations : Dynarmic::no_optimizations;
-    config.enable_cycle_counting = false;
+    config.enable_cycle_counting = time_sliced;
 
 #if defined(VITA3K_PLATFORM_IOS) && defined(__aarch64__)
     // StikDebug services Oaknut's BRK #0xf00d while the JIT constructor maps
@@ -436,21 +444,33 @@ std::unique_ptr<Dynarmic::A32::Jit> DynarmicCPU::make_jit() {
 #endif
 }
 
-DynarmicCPU::DynarmicCPU(CPUState *state, std::size_t processor_id, bool cpu_opt)
+DynarmicCPU::DynarmicCPU(CPUState *state, std::size_t processor_id, bool cpu_opt, bool time_sliced)
     : parent(state)
     , cb(std::make_unique<ArmDynarmicCallback>(*state, *this))
     , cp15(std::make_shared<ArmDynarmicCP15>())
     , core_id(processor_id)
-    , cpu_opt(cpu_opt) {
+    , cpu_opt(cpu_opt)
+    , time_sliced(time_sliced) {
 #if defined(VITA3K_PLATFORM_IOS) && defined(__aarch64__)
     // JIT code regions come from a fixed pool prepared while the debugger is
     // attached. Defer the allocation until this core first executes so
     // created-but-not-yet-started threads don't hold a region.
     parked_ctx = std::make_unique<CPUContext>();
 #else
-    jit = make_jit();
+    if (time_sliced)
+        parked_ctx = std::make_unique<CPUContext>();
+    else
+        jit = make_jit();
 #endif
 }
+
+void DynarmicCPU::rebind(CPUState *state) {
+    parent = state;
+    cb->parent = state;
+}
+
+std::array<uint32_t, 3> DynarmicCPU::save_cp15() const { return cp15->save(); }
+void DynarmicCPU::load_cp15(const std::array<uint32_t, 3> &values) { cp15->load(values); }
 
 DynarmicCPU::~DynarmicCPU() = default;
 
@@ -489,13 +509,15 @@ int DynarmicCPU::run() {
         LOG_CRITICAL("Cannot (re)create JIT code cache for thread {}: {}", parent->thread_id, e.what());
         return -1;
     }
+    // Bounded slices let one slot serve spinning and waiting guest threads.
+    cb->ticks_remaining = 10000;
     halted = false;
     break_ = false;
     parent->svc_called = false;
     Dynarmic::HaltReason halt_reason;
     do {
         halt_reason = jit->Run();
-    } while ((halt_reason == Dynarmic::HaltReason::Step) || (halt_reason == Dynarmic::HaltReason::CacheInvalidation));
+    } while (!time_sliced && ((halt_reason == Dynarmic::HaltReason::Step) || (halt_reason == Dynarmic::HaltReason::CacheInvalidation)));
 
     return halted;
 }
@@ -508,6 +530,9 @@ int DynarmicCPU::step() {
         return -1;
     }
     parent->svc_called = false;
+    halted = false;
+    break_ = false;
+    cb->ticks_remaining = 1;
     jit->Step();
     return 0;
 }
@@ -693,6 +718,13 @@ void DynarmicCPU::invalidate_jit_cache(Address start, size_t length) {
     jit->InvalidateCacheRange(start, length);
 }
 
+void DynarmicCPU::clear_translation_cache() {
+    if (jit)
+        jit->ClearCache();
+}
+
 void DynarmicCPU::clear_exclusive() {
+    if (time_sliced && jit)
+        jit->ClearExclusiveState();
     shared_monitor.ClearProcessor(core_id);
 }

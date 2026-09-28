@@ -23,6 +23,10 @@
 #include <functional>
 
 struct MemState;
+#if defined(VITA3K_PLATFORM_IOS)
+// Startup-only setting; retains the full 32-bit guest virtual address space.
+void set_ios_guest_memory_limit(uint64_t bytes);
+#endif
 
 typedef std::function<bool(uint8_t *addr, bool write)> AccessViolationHandler;
 

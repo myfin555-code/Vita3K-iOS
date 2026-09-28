@@ -48,7 +48,7 @@ struct SettingsView: View {
                 }
                 videoSection
                 graphicsSection
-                cpuSection
+                if !model.isPerGame { jitMemorySection }
                 modulesSection
                 audioSection
                 if !model.isPerGame {
@@ -209,28 +209,32 @@ struct SettingsView: View {
         }
     }
 
-    private var cpuSection: some View {
+    private var jitMemorySection: some View {
         Section {
-            Picker("CPU core", selection: $model.cpuOptimizations) {
-                Text("Dynarmic — optimized").tag(true)
-                Text("Dynarmic — optimizations off").tag(false)
+            numericField("JIT threads", text: $model.jitThreadsText)
+            numericField("JIT RAM per thread (MB)", text: $model.jitCacheText)
+            numericField("Emulated RAM budget (MB)", text: $model.emulatorRAMText)
+            if !model.canSave {
+                Text("Use whole numbers: JIT threads 1–64, JIT RAM 16–128 MB, emulated RAM 512–2048 MB.")
+                    .foregroundStyle(.red)
             }
-            if !model.isPerGame {
-                HStack {
-                    Text("JIT cache (MB)")
-                    TextField("16", text: $model.jitCacheText)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                        .accessibilityLabel("JIT cache in MB per guest thread")
-                }
-                if model.validJITCacheMB == nil {
-                    Text("Enter a whole number from 16 to 128.").foregroundStyle(.red)
-                }
+            if let total = model.maxJITCacheMB {
+                LabeledContent("Maximum JIT cache", value: "\(total) MB")
             }
         } header: {
-            Text("CPU")
+            Text("JIT & Memory")
         } footer: {
-            Text("Dynarmic is the CPU engine included in this build. CPU mode changes apply on the next game launch. JIT cache is MB per guest thread (1 MB = 1,048,576 bytes), defaults to 16, and requires restarting the app. Larger values such as 128 can consume several GB across threads and cause iOS to close the app.")
+            Text("Guest threads share these JIT execution slots. 1 × 128 MB uses one reusable JIT cache; it may run slower than several slots. Defaults: 37 slots × 16 MB; emulated RAM 640 MB. RAM is a guest allocation budget, not a limit on the whole app: GPU resources and iOS overhead are additional. 1 MB = 1,048,576 bytes. Restart the app after changes.")
+        }
+    }
+
+    private func numericField(_ title: String, text: Binding<String>) -> some View {
+        HStack {
+            Text(title)
+            TextField("", text: text)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.trailing)
+                .accessibilityLabel(title)
         }
     }
 

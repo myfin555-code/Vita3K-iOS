@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <mem/allocation_budget.h>
 #include <mem/allocator.h>
 #include <mem/functions.h>
 #include <mem/util.h>
@@ -65,6 +66,7 @@ struct MemExternalMapping {
 
 struct MemState {
     std::mutex generation_mutex;
+    mem::AllocationBudget allocation_budget;
     std::mutex protect_mutex;
 
     uint32_t host_page_size = 0;
