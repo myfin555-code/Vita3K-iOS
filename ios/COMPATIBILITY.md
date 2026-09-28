@@ -20,6 +20,67 @@ These are source-level compatibility changes, **not device certification**.
 Building and installing on each OS/device remains necessary. OS compatibility
 also does not guarantee that a particular Vita game runs.
 
+## MoltenVK 1.4.2
+
+CI and both local project generators install the official **1.4.2** static
+XCFramework from a shared SHA-256 pin in `ios/cmake/MoltenVKVersion.cmake`.
+Device uses `MoltenVK-ios.tar` (`ios-arm64`); Simulator uses `MoltenVK-all.tar`
+(`ios-arm64_x86_64-simulator`). Headers are checked during CMake configuration
+so a leftover 1.4.1 package fails early instead of silently building the old driver.
+
+```sh
+cmake -P .ci/install-moltenvk.cmake
+# For the experimental Simulator target:
+cmake -DMVK_PACKAGE=simulator -P .ci/install-moltenvk.cmake
+```
+
+The installer verifies the cached/downloaded archive, extracts to staging and
+validates the slice and version before replacing the installed package. Local
+generators now use the same iOS 16 deployment target as CI. The official 1.4.2
+package requires iOS 15 or later, so this does not raise the application's floor.
+The macOS desktop dependency is separate and retains its existing version.
+
+### Existing 1.4.1 integration and changes
+
+The previous library was an **unmodified official binary**, not a custom MoltenVK
+source build. iOS-specific behavior lives in Vita3K's renderer:
+
+| Area | Behavior with 1.4.2 |
+| --- | --- |
+| Static Vulkan entry point and Metal surface | Retained; no runtime Vulkan loader needed |
+| `FULL_IMAGE_VIEW_SWIZZLE` | Removed from iOS layer settings: the driver marks it obsolete and ignored (already so in 1.4.1); image-view swizzle support remains driver-managed |
+| `RESUME_LOST_DEVICE` | Retained for recoverable submission failures; it is not a fix for every GPU fault |
+| Debug/verbose driver logging | Remains limited to debug builds |
+| CPU/GPU RAM exchange | Keep DoubleBuffer when its required features exist; otherwise use staging-buffer surface readback; do not enable PageTable/ExternalHost |
+| Dirty tracking | Preserve copying instead of fault-based buffer/surface tracking during iOS JIT use |
+| Pipeline compilation | Preserve asynchronous compilation and existing worker policy |
+| Pipeline disk cache | Validate vendor/device/driver UUID and header before loading; rebuild incompatible caches and preserve the empty cache if the driver rejects a payload |
+| Texture lifetime / presentation | Preserve guest-page validation and locking during hash/upload, plus capability-derived swapchain extent |
+
+Official 1.4.2 fixes cover swapchain recreation producing 1×1 drawables,
+render-target channel corruption during transfers, cached Metal texture
+invalidation, argument-buffer alignment/residency and subpass barriers. These
+are relevant to this renderer; an FPS improvement or game crash fix requires
+measurement on device. New sampler min/max support is limited to supported
+Apple10 GPUs with iOS 26; it is not forced on older devices.
+
+Keep the driver's supported defaults for Metal argument buffers, synchronous
+queue submission and command-buffer prefill. Prefill modes trade speed, memory,
+autorelease handling and synchronization behavior; changing them without a
+profile can regress an emulator. Synchronous submission means encoding on the
+calling thread, not waiting for the GPU to finish every submission.
+
+Sources: [official 1.4.2 release](https://github.com/KhronosGroup/MoltenVK/releases/tag/v1.4.2),
+[configuration reference](https://github.com/KhronosGroup/MoltenVK/blob/v1.4.2/Docs/MoltenVK_Configuration_Parameters.md),
+[obsolete swizzle field](https://github.com/KhronosGroup/MoltenVK/blob/v1.4.2/MoltenVK/MoltenVK/API/mvk_private_api.h).
+
+Device checks: cold/warm shader-cache launch after upgrading from 1.4.1,
+Attack on Titan intro skip, scene transitions, DoubleBuffer on/off, surface
+readback colors, rotation/backgrounding and steady-size swapchain behavior.
+Compare frame times and peak memory with the same game/scene/settings. Linux
+checks package integrity and portable code; Xcode linking and GPU execution
+still require macOS/iPhone.
+
 ## JIT methods
 
 Open **Settings → JIT**, or tap the JIT banner. Choose one acquisition method:
